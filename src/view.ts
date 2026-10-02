@@ -39,7 +39,7 @@ export class CubeView {
   if(!this.preview){this.preview=move;this.cube.beginTurn(move);}
   this.cube.setTurnAngle(angle);
  }
- async animate(move:Move,options:{fromAngle?:number;toAngle?:number;quick?:boolean}={}):Promise<void>{
+ async animate(move:Move,options:{fromAngle?:number;toAngle?:number;quick?:boolean;onProgress?:(angle:number)=>void}={}):Promise<void>{
   if(this.lost)throw new Error('WebGL context lost');
   this.preview=null;this.highlight(null);this.cube.beginTurn(move);
   const from=options.fromAngle??0,to=options.toAngle??move.direction*Math.PI/2;this.cube.setTurnAngle(from);
@@ -47,7 +47,7 @@ export class CubeView {
   if(duration===0){this.cube.setTurnAngle(to);return;}
   return new Promise((resolve,reject)=>{
    this.abortAnimation=reject;const start=performance.now();
-   const step=(now:number)=>{if(this.lost)return;const t=Math.min(1,(now-start)/duration);this.cube.setTurnAngle(interpolateAngle(from,to,t));
+   const step=(now:number)=>{if(this.lost)return;const t=Math.min(1,(now-start)/duration);const angle=interpolateAngle(from,to,t);this.cube.setTurnAngle(angle);try{options.onProgress?.(angle);}catch{/* Optional feedback must never interrupt a turn. */}
     if(t<1)requestAnimationFrame(step);else{this.abortAnimation=null;resolve();}};
    requestAnimationFrame(step);
   });

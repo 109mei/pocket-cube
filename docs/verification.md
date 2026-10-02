@@ -4,7 +4,7 @@
 
 Environment: Node.js 24.19.0, Linux. Date: 2026-10-02.
 
-- `npm test`: 78 passing unit/scene/projection/camera tests across9 files, plus5 controller integration scenarios and108 actual scene/view animation cases.
+- `npm test`: 88 passing unit/scene/projection/camera/audio tests across10 files, plus5 controller integration scenarios and108 actual scene/view animation cases.
 - `npm run build`: TypeScript type checking and Vite production build pass.
 - Exact move-four-times and inverse checks for all 18 signed axis/layer turns.
 - 100 seeded 100-move scrambles, replayed backward, restore the exact state.
@@ -59,3 +59,13 @@ The orbit camera now composes normalized screen-relative quaternions, with a ful
 The mobile layout uses a compact title/status row and one-row primary controls, retaining44px touch targets. It uses visualViewport height when unzoomed and dynamic viewport CSS as fallback. Tests cover viewport-resize cancellation without committing a held layer and preserving layout size during browser zoom.
 
 These geometry/controller checks pass without claiming a WebGL-rendered browser or physical-device retest. Post-deployment responsive layout and the user's Safari interaction/appearance check remain separate acceptance steps. Private tester screenshots are not included in the repository.
+
+## Rotation-motion sound
+
+Original procedural colored noise supplies a single looping friction voice driven by smoothed layer angular speed, with a scheduled fade when the finger stops. A short, soft-envelope material sound accompanies successful alignment, rather than a click on every pointer event. Cancellation, small-drag rollback, camera orbit, rejected moves and failed animations do not emit an alignment sound. Animation progress and drag previews share the same motion feedback adapter.
+
+Audio is lazy: no AudioContext is constructed before interaction. Saved mute and volume are validated separately from cube saves; missing or denied Web Audio/storage remains nonfatal. Hidden-page suspension discards stale tails; pagehide closes audio and releases a held pointer; a subsequent user gesture can safely recreate the context. Resume races and failures are tested. Repeated stationary samples obey the same automation rate cap; an explicit stop still fades immediately. Defaults are deliberately quiet, with master gain capped at0.18. Motion gain is bounded at0.8, friction PCM peak at0.5, automation at90Hz, and alignment creation at12.5Hz with no more than two finite accents. These are software limits, not measured device loudness.
+
+Ten unit tests exercise generated PCM bounds/smoothness, lazy unlock, rate limits, stillness fade, mute/volume persistence, hide/close/recreate, resume races, invalid settings and unavailable APIs. Controller-port checks cover motion before release and silence for cancellation/noop paths; actual CubeView animation methods report angular progress. The production build separates the stable Three.js vendor chunk for caching.
+
+No subjective sound-quality or real-device listening claim is made. Safari audio unlock, perceived softness and the user's preferred level require a device audition. No external sound assets, paid services or audio telemetry are used.

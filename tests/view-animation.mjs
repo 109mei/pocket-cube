@@ -53,7 +53,7 @@ const held=poses();
 const framesBefore=callbacks.length;
 const duration=settleDuration(from,direction*Math.PI/2,true,false);
 let complete=false;
-const animation=view.animate(move,{fromAngle:from,toAngle:direction*Math.PI/2,quick:true}).then(()=>complete=true);
+const progress=[];const animation=view.animate(move,{fromAngle:from,toAngle:direction*Math.PI/2,quick:true,onProgress:angle=>progress.push(angle)}).then(()=>complete=true);
 assert.deepEqual(poses(),held,'release must start at held pose');
 
  if(duration===0){await animation;
@@ -70,6 +70,7 @@ callbacks=[];
 for(const cb of end)cb(now);
 await animation;
 }
+ if(duration>0){assert(progress.length>0,'actual animation must report angular progress for motion audio');assert(Math.abs(progress.at(-1)-direction*Math.PI/2)<1e-10);}
  exact(applyMove(initial,move));
 view.sync(applyMove(initial,move));
 exact(applyMove(initial,move));

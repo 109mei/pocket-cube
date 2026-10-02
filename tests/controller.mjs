@@ -37,6 +37,7 @@ const compiled = await build({
  define: { 'import.meta.env.DEV': 'true' },
  plugins: [{ name: 'controller-test-ports', setup(builder) {
   builder.onLoad({ filter: /\/view\.ts$/ }, () => ({ contents: fakeView, loader: 'ts' }));
+  builder.onLoad({filter:/\/audio\.ts$/},()=>({loader:'ts',contents:`export class MotionAudio {constructor(){globalThis.auditAudio=this;this.alignments=0;this.movements=[];this.stops=0;this.unlocks=0;this.preferences={volume:.45,muted:false};}unlock(){this.unlocks++;}beginMotion(angle){this.begin=angle;}motion(angle){this.movements.push(angle);}stopMotion(){this.stops++;}settle(){this.alignments++;}setHidden(hidden){this.hidden=hidden;}close(){this.closed=true;}setMuted(muted){this.preferences.muted=muted;}setVolume(volume){this.preferences.volume=volume;}}` }));
   builder.onLoad({ filter: /\.css$/ }, () => ({ contents: '', loader: 'js' }));
  }}],
 });
@@ -95,10 +96,12 @@ if(mode==='webgl-unavailable') {
 if(mode==='limit') {
  const before=snapshot().session;grab(95);release(95);await flush();assert.deepEqual(snapshot().session,before);assert.equal(auditView.preview,null,'rejected move must roll preview back');assert.equal(snapshot().busy,false);
  grab(0,95);assert.equal(auditView.preview.move.axis,'x');release(0,95);await flush();assert.equal(auditView.preview,null);assert.deepEqual(snapshot().session,before);
+ assert.equal(auditAudio.alignments,0);assert(auditAudio.stops>0);
  console.log('PASS: move-limit rejection rolls preview back exactly and permits safe re-grab on another axis.');process.exit(0);
 }
 if(mode==='context-preview') {
  const before=snapshot().session;grab(120);assert(auditView.preview);auditView.onLost();assert.equal(auditView.preview,null,'context loss must discard held preview immediately');canvas.dispatch('pointermove',{clientX:240});assert.equal(auditView.preview,null,'stale held pointer must not re-preview after recovery');release(120);await flush();assert.deepEqual(snapshot().session,before);assert.equal(auditView.preview,null);assert.equal(auditView.pending.length,0);assert.equal(snapshot().busy,false);assert.equal(element('recovery').hidden,false);assert.equal(writes.at(-1).history.length,before.history.length);grab(120);assert.equal(auditView.preview,null);element('reload').click();assert.equal(reloads,1);
+ assert.equal(auditAudio.alignments,0);assert(auditAudio.closed);
  console.log('PASS: context loss while holding rolls back, never commits, and gates new gestures until reload.');process.exit(0);
 }
 if(mode==='storage-denied') {
@@ -109,6 +112,7 @@ if(mode==='storage-denied') {
  console.log('PASS: denied storage preserves committed state and requires loss confirmation before reload.');process.exit(0);
 }
 assert(!elements.has('gesture'),'no intrusive gesture-text overlay');
+assert(globalThis.auditAudio,'motion audio adapter must be wired');assert.equal(auditAudio.alignments,0);assert.equal(auditAudio.unlocks,0);
 assert.equal(app.style.getPropertyValue('--app-height'),'568px','use the actual visible viewport height');
 visualViewport.scale=2;visualViewport.height=284;for(const callback of viewportEvents.resize??[])callback();assert.equal(app.style.getPropertyValue('--app-height'),'568px','pinch zoom must not reflow the game smaller');visualViewport.scale=1;visualViewport.height=568;
 const style=readFileSync(resolve(root,'src/style.css'),'utf8');
@@ -116,34 +120,37 @@ assert.match(style,/-webkit-user-select\s*:\s*none/);assert.match(style,/-webkit
 canvas.dispatch('contextmenu');assert.equal(prevented,1);
 const initial=snapshot().session;
 // Motion appears before release; competing controls and partial state saves are gated.
-grab(3);assert.equal(auditView.preview,null);canvas.dispatch('pointermove',{clientX:140});assert.equal(auditView.preview.angle,.4);assert.deepEqual(snapshot().session,initial);assertGated();
+grab(3);assert.equal(auditView.preview,null);assert.equal(auditAudio.movements.length,0);canvas.dispatch('pointermove',{clientX:140});assert.equal(auditView.preview.angle,.4);assert.equal(auditAudio.movements.at(-1),.4);assert.equal(auditAudio.alignments,0);assert.deepEqual(snapshot().session,initial);assertGated();
 assert(element('help').disabled);const blockedToggle=prevented;element('helper-toggle').dispatch('click');assert.equal(prevented,blockedToggle+1,'helper expansion must be blocked during a held layer');for(const id of ['cw','reset','undo','home','help'])element(id).click();assert.equal(auditView.pending.length,0);frame(6000);assert.equal(writes.at(-1).history.length,0);
-release(95);assert.equal(auditView.pending[0].options.fromAngle,.95);assert.equal(auditView.pending[0].options.toAngle,Math.PI/2);assert.equal(auditView.pending[0].options.quick,true);assert.equal(snapshot().session.history.length,0);await settle();assert.equal(snapshot().session.history.length,1);assert.deepEqual(snapshot().session.history[0],{axis:'y',layer:0,direction:1});
+release(95);assert.equal(auditView.pending[0].options.fromAngle,.95);assert.equal(auditView.pending[0].options.toAngle,Math.PI/2);assert.equal(auditView.pending[0].options.quick,true);assert.equal(typeof auditView.pending[0].options.onProgress,'function');assert.equal(snapshot().session.history.length,0);await settle();assert.equal(auditAudio.alignments,1);assert.equal(snapshot().session.history.length,1);assert.deepEqual(snapshot().session.history[0],{axis:'y',layer:0,direction:1});
 // Axis stays locked while the finger reverses or moves perpendicularly.
 grab(6);canvas.dispatch('pointermove',{clientX:5,clientY:240});assert.equal(auditView.preview.move.axis,'y');assert.equal(auditView.preview.angle,-.95);release(-95,140);assert.equal(auditView.pending[0].move.direction,-1);await settle();assert.deepEqual(snapshot().session.cube,initial.cube);element('solved-dialog').close();
 // Small drag returns without a logical move.
-let committed=snapshot().session;grab(40);release(40);assert.equal(auditView.pending[0].options.toAngle,0);await settle();assert.deepEqual(snapshot().session,committed);
+let committed=snapshot().session;const accentsBeforeCancel=auditAudio.alignments;grab(40);release(40);assert.equal(auditView.pending[0].options.toAngle,0);await settle();assert.deepEqual(snapshot().session,committed);
 // Cancellation paths retain exact state, ignore stale release, and do not unlock another pointer.
 for(const cancel of ['pointercancel','lostpointercapture','resize','blur','visibilitychange','playfieldresize','visualviewport']) {
  committed=snapshot().session;grab(120);canvas.dispatch('pointercancel',{pointerId:2});assert.equal(auditView.pending.length,0);
  if(cancel==='visualviewport'){visualViewport.height=460;for(const callback of viewportEvents.resize??[])callback();assert.equal(app.style.getPropertyValue('--app-height'),'460px');}else if(cancel==='playfieldresize')auditView.onResize();else if(cancel==='resize'||cancel==='blur')windowEvent(cancel);else if(cancel==='visibilitychange')visibility(true);else canvas.dispatch(cancel);
  assert.equal(auditView.pending[0].options.toAngle,0,cancel);await settle();release(120);assert.equal(auditView.pending.length,0);assert.deepEqual(snapshot().session,committed);if(cancel==='visibilitychange')visibility(false);
 }
+assert.equal(auditAudio.alignments,accentsBeforeCancel,'all small/canceled gestures stay free of alignment accents');
 canvas.dispatch('pointerdown');canvas.dispatch('pointerdown',{pointerId:2,isPrimary:false});canvas.dispatch('pointermove',{pointerId:2,clientX:230});canvas.dispatch('pointerup',{pointerId:2,clientX:230});assert.equal(auditView.preview,null);canvas.dispatch('pointercancel');
 // Recoverable animation failure clears preview and permits a fresh axis.
 committed=snapshot().session;grab(95);release(95);auditView.pending.shift().reject(Error('interrupted animation'));await flush();assert.deepEqual(snapshot().session,committed);assert.equal(auditView.preview,null);assert.equal(snapshot().busy,false);grab(0,95);assert.equal(auditView.preview.move.axis,'x');release(0,95);await settle();
 // Orbit remains separate and does not turn a layer.
-canvas.dispatch('pointerdown',{clientX:300});canvas.dispatch('pointermove',{clientX:330,clientY:110});canvas.dispatch('pointerup',{clientX:330,clientY:110});assert.equal(auditView.orbitX,30);assert.equal(auditView.orbitY,10);assert.equal(auditView.pending.length,0);
+const beforeOrbitAudio=auditAudio.alignments;const beforeOrbitMotion=auditAudio.movements.length;
+canvas.dispatch('pointerdown',{clientX:300});canvas.dispatch('pointermove',{clientX:330,clientY:110});canvas.dispatch('pointerup',{clientX:330,clientY:110});assert.equal(auditView.orbitX,30);assert.equal(auditView.orbitY,10);assert.equal(auditView.pending.length,0);assert.equal(auditAudio.alignments,beforeOrbitAudio);assert.equal(auditAudio.movements.length,beforeOrbitMotion);
 // A coalesced gesture with no move event still uses its final displacement.
 canvas.dispatch('pointerdown');release(95);assert.equal(auditView.pending[0].options.fromAngle,.95);await settle();
 // Undo restores the last committed state and queue capacity remains bounded.
 const beforeUndo=snapshot().session.history.length;element('undo').click();await settle();assert.equal(snapshot().session.history.length,beforeUndo-1);
 for(let i=0;i<9;i++)element('cw').click();assert.equal(snapshot().queueSize,8);for(let i=0;i<8;i++)await settle();
 // Long hold and app backgrounding never persist a partial geometry state.
-grab(120);committed=snapshot().session;windowEvent('pagehide');assert.equal(writes.at(-1).history.length,committed.history.length);canvas.dispatch('pointercancel');await settle();assert.deepEqual(snapshot().session,committed);
+grab(120);committed=snapshot().session;windowEvent('pagehide');assert.equal(writes.at(-1).history.length,committed.history.length);assert.equal(canvas.hasPointerCapture(1),false,'pagehide cancels held pointer immediately');assert(auditAudio.closed);canvas.dispatch('pointercancel');await settle();assert.deepEqual(snapshot().session,committed);
 // Active play clock pauses in background.
 if(!snapshot().session.started){element('cw').click();await settle();}
 const elapsed=snapshot().session.elapsedMs;frame(1000);assert.equal(snapshot().session.elapsedMs,elapsed+1000);visibility(true);frame(60000);assert.equal(snapshot().session.elapsedMs,elapsed+1000);visibility(false);
 // Loss during a release animation retains committed state and offers durable recovery.
 committed=snapshot().session;grab(95);release(95);auditView.onLost();auditView.pending.shift().reject(Error('WebGL context lost'));await flush();assert.deepEqual(snapshot().session,committed);assert.equal(snapshot().queueSize,0);assert.equal(element('recovery').hidden,false);assertGated();visibility(true);visibility(false);frame(6000);assert.equal(snapshot().session.elapsedMs,committed.elapsedMs);element('reload').click();assert.equal(reloads,1);assert.equal(writes.at(-1).history.length,committed.history.length);
+assert(auditAudio.hidden===false);assert(auditAudio.stops>0);
 console.log('PASS: continuous preview, axis lock/reversal, small drag, cancellation, capture loss, second pointer, resize/blur/visibility, helper gating, queue cap, undo, saves, timer, selection suppression and WebGL recovery.');

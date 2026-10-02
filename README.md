@@ -9,6 +9,7 @@ An original, portrait-first 3×3 color cube, built with actual Three.js and Type
 - Scramble starts a fresh puzzle; the timer begins with the first turn and pauses while the tab is hidden.
 - Undo reverses one committed player move. Reset returns all faces to solved.
 - Expand **ボタンで回す** for six reference faces and clockwise/counterclockwise controls. Directions are viewed from outside the selected face.
+- Rotation produces an original, quiet sliding sound that follows layer speed, followed by a soft alignment sound. Use **♪** for saved volume/mute settings. Audio starts only after interaction and stops in the background.
 - Progress stays in this browser's localStorage. Nothing is sent to a server. Google Fonts is an optional typography request; the app has a system-font fallback.
 
 ## Develop
@@ -36,6 +37,7 @@ Dev server: http://127.0.0.1:5174. Production output: `dist/`. Assets use relati
 - `geometry.ts`: shared compact body/tile dimensions.
 - `scene.ts`: testable procedural cubies, face tiles, raycasting, layer pivots and conservative visual bounds.
 - `view.ts`: WebGL lifecycle, continuous quaternion orbit, geometry-derived camera fit and animated layer turns. Every completed turn snaps back to exact logical state.
+- `audio.ts`: original procedural material sound, bounded motion/settling voices, audio preferences and optional Web Audio lifecycle.
 - `main.ts`: accessible DOM controls, dialogs, pointer ownership and lifecycle.
 
 ## Deployment
