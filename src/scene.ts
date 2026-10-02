@@ -35,11 +35,11 @@ export class CubeScene extends THREE.Group{
  pick(raycaster:THREE.Raycaster):Hit|null{
   // The plastic body participates in occlusion: a seam must never select a hidden sticker.
   const hit=raycaster.intersectObjects([...this.stickers,...this.bodies],false)[0];if(!hit)return null;
-  const s=hit.object.userData.sticker;if(s)return{position:[...s.position] as Vec3i,normal:[...s.normal] as Vec3i};
+  const s=hit.object.userData.sticker;if(s)return{position:[...s.position] as Vec3i,normal:[...s.normal] as Vec3i,point:hit.point.toArray() as Vec3i};
   // Rounded plastic normals bend toward neighboring cubies. The logical exterior
   // face instead follows the furthest coordinate of the actual hit point.
   const normal:Vec3i=[0,0,0],components=hit.point.toArray();const index=components.map(Math.abs).indexOf(Math.max(...components.map(Math.abs)));normal[index]=Math.sign(components[index]);
-  return{position:[...hit.object.userData.position] as Vec3i,normal};
+  return{position:[...hit.object.userData.position] as Vec3i,normal,point:hit.point.toArray() as Vec3i};
  }
  highlight(normal:Vec3i|null){for(const mesh of this.stickers){const s=mesh.userData.sticker;if(!s)continue;const active=normal&&s.normal.every((n:number,i:number)=>n===normal[i]);mesh.material.emissive.set(active?'#f7e9c9':'#000000');mesh.material.emissiveIntensity=active?.16:0;}}
  snapshot(){return this.stickers.map(m=>({id:m.userData.sticker.id,position:m.position.toArray(),normal:new THREE.Vector3(0,0,1).applyQuaternion(m.quaternion).toArray(),parent:m.parent===this.root?'root':'pivot'}));}

@@ -18,6 +18,6 @@ it('temporary pivot contains exactly one layer and snaps back on canceled animat
 it('ray on plastic border selects the visible front cell instead of a hidden back sticker',()=>{
  const scene=new CubeScene();scene.sync(createSolved());scene.updateMatrixWorld(true);
  const ray=new THREE.Raycaster(new THREE.Vector3(.48,0,10),new THREE.Vector3(0,0,-1));
- expect(scene.pick(ray)).toEqual({position:[0,0,1],normal:[0,0,1]});scene.dispose();
+ expect(scene.pick(ray)).toMatchObject({position:[0,0,1],normal:[0,0,1]});expect(scene.pick(ray)!.point![0]).toBeCloseTo(.48);scene.dispose();
 });
 it('empty background has no cube hit',()=>{const scene=new CubeScene();scene.sync(createSolved());scene.updateMatrixWorld(true);expect(scene.pick(new THREE.Raycaster(new THREE.Vector3(8,0,10),new THREE.Vector3(0,0,-1)))).toBeNull();scene.dispose();});

@@ -4,7 +4,7 @@ An original, portrait-first 3×3 color cube, built with actual Three.js and Type
 
 ## Play
 
-- Swipe a colored face to turn the row or column touched. Short and ambiguous diagonal gestures do nothing.
+- Grab and drag a colored face. Its layer follows your finger immediately; release to settle to the nearest quarter-turn. Small drags return to the previous state.
 - Drag empty space to orbit the cube. The small cube icon resets the viewpoint.
 - Scramble starts a fresh puzzle; the timer begins with the first turn and pauses while the tab is hidden.
 - Undo reverses one committed player move. Reset returns all faces to solved.
@@ -30,7 +30,9 @@ Dev server: http://127.0.0.1:5174. Production output: `dist/`. Assets use relati
 - `session.ts`: game history, undo and active-play elapsed time.
 - `storage.ts`: versioned, bounded replay saves, never renderer serialization.
 - `queue.ts`: one atomic animation/commit at a time, maximum eight accepted moves. Face gestures are disabled while busy; helper buttons may queue.
-- `input.ts`: pure projected-tangent gesture resolver.
+- `input.ts`: pointer/tap helpers.
+- `drag.ts`: early layer selection, locked-axis finger tracking and transactional release.
+- `projection.ts`: camera-aware rotational velocity at the actual grabbed world point.
 - `scene.ts`: testable procedural cubies, face tiles, raycasting and layer pivots.
 - `view.ts`: WebGL lifecycle, camera orbit and animated layer turns. Every completed turn snaps back to exact logical state.
 - `main.ts`: accessible DOM controls, dialogs, pointer ownership and lifecycle.

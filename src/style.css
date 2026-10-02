@@ -23,3 +23,9 @@
  .app .helper-panel{gap:7px;padding-bottom:0}
  .app .view-reset{right:0;bottom:0}
 }
+
+/* Direct manipulation belongs to the play surface; other page text remains selectable. */
+.playfield,.playfield canvas{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+.playfield canvas{touch-action:none;cursor:grab}.playfield canvas:active{cursor:grabbing}
+
+.helper summary[aria-disabled="true"]{opacity:.45;cursor:default}

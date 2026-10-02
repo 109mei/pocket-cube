@@ -1,5 +1,5 @@
 import { AXIS_INDEX, FACE_NORMALS, type Axis, type Move, type Vec3i } from './model';
-export type Hit={position:Vec3i;normal:Vec3i};
+export type Hit={position:Vec3i;normal:Vec3i;point?:[number,number,number]};
 export type ProjectedTangent={axis:Axis;dx:number;dy:number};
 export function beginPointer(hasActive:boolean,isPrimary:boolean){return !hasActive&&isPrimary;}
 export function resolveSwipe(hit:Hit,delta:{x:number;y:number},tangents:ProjectedTangent[]):Move|null{
