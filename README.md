@@ -9,7 +9,7 @@ An original, portrait-first 3×3 color cube, built with actual Three.js and Type
 - Scramble starts a fresh puzzle; the timer begins with the first turn and pauses while the tab is hidden.
 - Undo reverses one committed player move. Reset returns all faces to solved.
 - Expand **ボタンで回す** for six reference faces and clockwise/counterclockwise controls. Directions are viewed from outside the selected face.
-- Rotation produces an original, quiet sliding sound that follows layer speed, followed by a soft alignment sound. Use **♪** for saved volume/mute settings. Audio starts only after an eligible gesture (touch/pen release or mouse press) and stops in the background. The sound dialog includes **音を開始・試聴** to retry activation and test output independently of cube rendering; engine status does not prove speaker output.
+- Rotation produces original, dry plastic-contact and rubbing sounds whose density follows layer speed, followed by a short alignment detent. Use **♪** for saved volume/mute settings. Audio starts only after an eligible gesture (ordinary cube touch release/tap or mouse press) and stops in the background. Native touchend and tap handlers retry activation without requiring the settings button; the first touch may remain silent until release, according to browser policy. The sound dialog includes **音を開始・試聴** to retry activation and test output independently of cube rendering; engine status does not prove speaker output.
 - Progress stays in this browser's localStorage. Nothing is sent to a server. Google Fonts is an optional typography request; the app has a system-font fallback.
 
 ## Develop

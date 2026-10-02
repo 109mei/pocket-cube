@@ -2,7 +2,7 @@
  * These checks exercise application state/event wiring, not browser rendering,
  * native pointer dispatch, Safari behavior, WebGL, or perceived touch latency.
  * Run from repository: node tests/controller.mjs [projectRoot] [mode]
- * Modes: normal, storage-denied, webgl-unavailable, context-preview, limit.
+ * Modes: normal, storage-denied, webgl-unavailable, context-preview, limit, real-audio.
  */
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
@@ -37,7 +37,7 @@ const compiled = await build({
  define: { 'import.meta.env.DEV': 'true' },
  plugins: [{ name: 'controller-test-ports', setup(builder) {
   builder.onLoad({ filter: /\/view\.ts$/ }, () => ({ contents: fakeView, loader: 'ts' }));
-  builder.onLoad({filter:/\/audio\.ts$/},()=>({loader:'ts',contents:`export class MotionAudio {constructor(){globalThis.auditAudio=this;this.alignments=0;this.movements=[];this.stops=0;this.unlocks=0;this.preferences={volume:.45,muted:false};this.status='idle';}unlock(force){this.lastUnlockForce=force;this.unlocks++;return Promise.resolve(true);}audition(){this.auditions=(this.auditions??0)+1;return Promise.resolve(true);}beginMotion(angle){this.begin=angle;}motion(angle){this.movements.push(angle);}stopMotion(){this.stops++;}settle(){this.alignments++;}setHidden(hidden){this.hidden=hidden;}close(){this.closed=true;}setMuted(muted){this.preferences.muted=muted;}setVolume(volume){this.preferences.volume=volume;}}` }));
+  if(mode!=='real-audio')builder.onLoad({filter:/\/audio\.ts$/},()=>({loader:'ts',contents:`export class MotionAudio {constructor(){globalThis.auditAudio=this;this.alignments=0;this.movements=[];this.stops=0;this.unlocks=0;this.preferences={volume:.45,muted:false};this.status='idle';}unlock(force){this.lastUnlockForce=force;this.unlocks++;return Promise.resolve(true);}audition(){this.auditions=(this.auditions??0)+1;return Promise.resolve(true);}beginMotion(angle){this.begin=angle;}motion(angle){this.movements.push(angle);}stopMotion(){this.stops++;}settle(){this.alignments++;}setHidden(hidden){this.hidden=hidden;}close(){this.closed=true;}setMuted(muted){this.preferences.muted=muted;}setVolume(volume){this.preferences.volume=volume;}}` }));
   builder.onLoad({ filter: /\.css$/ }, () => ({ contents: '', loader: 'js' }));
  }}],
 });
@@ -79,6 +79,12 @@ globalThis.location={reload(){reloads++;}};
 globalThis.performance={now:()=>now};
 if(mode==='limit')storage.set('pocket-cube:session:v1',JSON.stringify({version:1,setup:[],history:Array.from({length:10000},()=>({axis:'x',layer:1,direction:1})),elapsedMs:0,started:false}));
 globalThis.localStorage={getItem:key=>storage.get(key)??null,setItem:(key,value)=>{if(mode==='storage-denied')throw Error('Storage denied');storage.set(key,value);writes.push(JSON.parse(value));}};
+let trustedActivation=false,contexts=[];
+class AudioParamPort { constructor(){this.calls=[];}setValueAtTime(v,t){this.calls.push([v,t,0]);}setTargetAtTime(v,t,k){this.calls.push([v,t,k]);}cancelScheduledValues(){} }
+class AudioNodePort {constructor(){this.gain=new AudioParamPort();this.frequency=new AudioParamPort();this.Q=new AudioParamPort();this.playbackRate=new AudioParamPort();this.edges=[];this.started=0;}connect(n){this.edges.push(n);return n;}disconnect(){this.edges=[];}start(){this.started++;}stop(){this.stopped=true;} }
+class AudioContextPort {constructor(){this.state='suspended';this.currentTime=0;this.sampleRate=44100;this.destination={};this.gains=[];this.sources=[];this.filters=[];this.resumeCalls=0;this.pending=[];contexts.push(this);}createGain(){const n=new AudioNodePort();this.gains.push(n);return n;}createBufferSource(){const n=new AudioNodePort();this.sources.push(n);return n;}createBiquadFilter(){const n=new AudioNodePort();this.filters.push(n);return n;}createBuffer(c,l,r){const a=new Float32Array(l);return{getChannelData:()=>a};}resume(){this.resumeCalls++;if(!trustedActivation)return new Promise(r=>this.pending.push(r));this.state='running';for(const r of this.pending.splice(0))r();return Promise.resolve();}suspend(){this.state='suspended';return Promise.resolve();}close(){this.state='closed';return Promise.resolve();}}
+globalThis.AudioContext=AudioContextPort;
+
 await import('data:text/javascript;base64,'+Buffer.from(compiled.outputFiles[0].text).toString('base64'));
 const element=id=>elements.get(id), canvas=element('cube'), snapshot=()=>globalThis.__cube.snapshot();
 async function flush(){for(let index=0;index<8;index++)await Promise.resolve();}
@@ -89,6 +95,21 @@ function visibility(hidden){document.hidden=hidden;for(const callback of documen
 function grab(dx,dy=0){canvas.dispatch('pointerdown');canvas.dispatch('pointermove',{clientX:100+dx,clientY:100+dy});}
 function release(dx,dy=0){canvas.dispatch('pointerup',{clientX:100+dx,clientY:100+dy});}
 function assertGated(){for(const id of ['cw','ccw','scramble','reset','undo','home'])assert(element(id).disabled,id+' must be disabled while grabbed');assert(faceButtons.every(button=>button.disabled));}
+if(mode==='real-audio'){
+canvas.dispatch('pointerdown',{pointerType:'touch'});
+canvas.dispatch('touchstart',{isTrusted:true,touches:[{identifier:77}],changedTouches:[{identifier:77}]});
+canvas.dispatch('pointermove',{pointerType:'touch',clientX:195});
+canvas.dispatch('pointerup',{pointerType:'touch',clientX:195});
+assert.equal(contexts.length,1);const ctx=contexts[0];assert.equal(ctx.resumeCalls,1);assert.equal(ctx.state,'suspended');assert.equal(auditView.pending.length,1);
+trustedActivation=true;
+canvas.dispatch('touchend',{isTrusted:true,touches:[],changedTouches:[{identifier:77}]});await flush();
+assert.equal(ctx.resumeCalls,2);assert.equal(ctx.state,'running');assert(ctx.gains[0].gain.calls.some(c=>c[0]===.081));assert.equal(ctx.sources.length,1);assert(ctx.sources[0].buffer.getChannelData(0).some(v=>v!==0));
+assert.equal(ctx.sources[0].edges[0],ctx.filters[0]);assert.equal(ctx.filters[0].edges[0],ctx.gains[1]);assert.equal(ctx.gains[1].edges[0],ctx.gains[0]);assert.equal(ctx.gains[0].edges[0],ctx.destination);
+canvas.dispatch('click',{isTrusted:true});assert.equal(auditView.pending.length,1);assert.equal(element('sound-dialog').open,false);
+await settle();assert.equal(snapshot().session.history.length,1);assert.equal(ctx.sources.length,2);
+console.log('PASS: actual MotionAudio + actual controller, blocked pointerup resume recovered by eligible touchend while queue busy; graph and PCM connected; one commit and one alignment.');process.exit(0);
+
+}
 if(mode==='webgl-unavailable') {
  assert.equal(element('recovery').hidden,false);element('sound-settings').click();assert(element('sound-dialog').open);element('sound-test').click();assert.equal(auditAudio.auditions,1);assert.match(element('recovery-copy').textContent,/開始できません/);assertGated();element('reload').click();assert.equal(reloads,1);
  console.log('PASS: WebGL startup failure retains recovery controls.');process.exit(0);
@@ -122,6 +143,11 @@ const initial=snapshot().session;
 // Touch activation belongs to release, not pointerdown, according to the platform activation model.
 const unlocksBeforeTouch=auditAudio.unlocks;canvas.dispatch('pointerdown',{pointerType:'touch'});assert.equal(auditAudio.unlocks,unlocksBeforeTouch,'touch-down must not leave an ineligible resume pending');canvas.dispatch('pointerup',{pointerType:'touch'});assert.equal(auditAudio.unlocks,unlocksBeforeTouch+1,'touch-up must synchronously unlock audio');assert.equal(auditAudio.lastUnlockForce,true);
 for(const pointerType of ['touch','pen']){const before=auditAudio.unlocks;canvas.dispatch('pointerdown',{pointerType});canvas.dispatch('pointercancel',{pointerType});assert.equal(auditAudio.unlocks,before,'canceled nonmouse gesture does not unlock');canvas.dispatch('pointerdown',{pointerType});canvas.dispatch('pointerup',{pointerType});assert.equal(auditAudio.unlocks,before+1,'nonmouse release unlocks');}
+// Safari's native touchend and a canvas tap retry directly without opening settings.
+for(const type of ['touchend','click']){const before=auditAudio.unlocks;if(type==='touchend')canvas.dispatch('touchstart',{isTrusted:true,touches:[{identifier:1}],changedTouches:[{identifier:1}]});canvas.dispatch(type,{isTrusted:true,touches:[],changedTouches:[{identifier:1}]});assert.equal(auditAudio.unlocks,before+1,type+' on the cube must directly retry audio');assert.equal(auditAudio.lastUnlockForce,true);assert.equal(element('sound-dialog').open,false);}
+const beforeSynthetic=auditAudio.unlocks;canvas.dispatch('click',{isTrusted:false});canvas.dispatch('touchend',{isTrusted:false,touches:[]});canvas.dispatch('touchcancel',{isTrusted:true});assert.equal(auditAudio.unlocks,beforeSynthetic,'synthetic and canceled touch events must not unlock');
+canvas.dispatch('touchstart',{isTrusted:true,touches:[{identifier:1}],changedTouches:[{identifier:1}]});canvas.dispatch('touchstart',{isTrusted:true,touches:[{identifier:1},{identifier:2}],changedTouches:[{identifier:2}]});canvas.dispatch('touchend',{isTrusted:true,touches:[{identifier:1}],changedTouches:[{identifier:2}]});assert.equal(auditAudio.unlocks,beforeSynthetic,'second-finger release must not unlock the active first touch');canvas.dispatch('touchcancel',{isTrusted:true,changedTouches:[{identifier:1}]});canvas.dispatch('touchend',{isTrusted:true,touches:[],changedTouches:[{identifier:1}]});assert.equal(auditAudio.unlocks,beforeSynthetic,'canceled first touch stays canceled');
+canvas.dispatch('touchstart',{isTrusted:true,touches:[{identifier:1}],changedTouches:[{identifier:1}]});canvas.dispatch('touchcancel',{isTrusted:true,changedTouches:[{identifier:2}]});canvas.dispatch('touchend',{isTrusted:true,touches:[],changedTouches:[{identifier:1}]});assert.equal(auditAudio.unlocks,beforeSynthetic+1,'canceling a secondary touch must not discard the primary activation');
 // Motion appears before release; competing controls and partial state saves are gated.
 grab(3);assert.equal(auditView.preview,null);assert.equal(auditAudio.movements.length,0);canvas.dispatch('pointermove',{clientX:140});assert.equal(auditView.preview.angle,.4);assert.equal(auditAudio.movements.at(-1),.4);assert.equal(auditAudio.alignments,0);assert.deepEqual(snapshot().session,initial);assertGated();
 assert(element('help').disabled);const blockedToggle=prevented;element('helper-toggle').dispatch('click');assert.equal(prevented,blockedToggle+1,'helper expansion must be blocked during a held layer');for(const id of ['cw','reset','undo','home','help'])element(id).click();assert.equal(auditView.pending.length,0);frame(6000);assert.equal(writes.at(-1).history.length,0);
@@ -130,11 +156,14 @@ release(95);assert.equal(auditView.pending[0].options.fromAngle,.95);assert.equa
 grab(6);canvas.dispatch('pointermove',{clientX:5,clientY:240});assert.equal(auditView.preview.move.axis,'y');assert.equal(auditView.preview.angle,-.95);release(-95,140);assert.equal(auditView.pending[0].move.direction,-1);await settle();assert.deepEqual(snapshot().session.cube,initial.cube);element('solved-dialog').close();
 // Small drag returns without a logical move.
 let committed=snapshot().session;const accentsBeforeCancel=auditAudio.alignments;grab(40);release(40);assert.equal(auditView.pending[0].options.toAngle,0);await settle();assert.deepEqual(snapshot().session,committed);
+// The native fallback still runs after pointerup has started a settling queue.
+const beforeNativeDrag=auditAudio.unlocks,alignmentsBeforeNativeDrag=auditAudio.alignments;canvas.dispatch('pointerdown',{pointerType:'touch'});canvas.dispatch('touchstart',{isTrusted:true,touches:[{identifier:1}],changedTouches:[{identifier:1}]});canvas.dispatch('pointermove',{pointerType:'touch',clientX:140});canvas.dispatch('pointerup',{pointerType:'touch',clientX:140});assert(snapshot().busy);canvas.dispatch('touchend',{isTrusted:true,touches:[],changedTouches:[{identifier:1}]});canvas.dispatch('click',{isTrusted:true});assert.equal(auditAudio.unlocks,beforeNativeDrag+3);assert.equal(auditAudio.alignments,alignmentsBeforeNativeDrag,'activation events alone never add sound accents');assert.equal(auditView.pending.length,1,'fallback events never duplicate turns');await settle();assert.deepEqual(snapshot().session,committed);
 // Cancellation paths retain exact state, ignore stale release, and do not unlock another pointer.
 for(const cancel of ['pointercancel','lostpointercapture','resize','blur','visibilitychange','playfieldresize','visualviewport']) {
  committed=snapshot().session;grab(120);canvas.dispatch('pointercancel',{pointerId:2});assert.equal(auditView.pending.length,0);
+ canvas.dispatch('touchstart',{isTrusted:true,touches:[{identifier:1}],changedTouches:[{identifier:1}]});const beforeInterruptedTouch=auditAudio.unlocks;
  if(cancel==='visualviewport'){visualViewport.height=460;for(const callback of viewportEvents.resize??[])callback();assert.equal(app.style.getPropertyValue('--app-height'),'460px');}else if(cancel==='playfieldresize')auditView.onResize();else if(cancel==='resize'||cancel==='blur')windowEvent(cancel);else if(cancel==='visibilitychange')visibility(true);else canvas.dispatch(cancel);
- assert.equal(auditView.pending[0].options.toAngle,0,cancel);await settle();release(120);assert.equal(auditView.pending.length,0);assert.deepEqual(snapshot().session,committed);if(cancel==='visibilitychange')visibility(false);
+ assert.equal(auditView.pending[0].options.toAngle,0,cancel);await settle();release(120);canvas.dispatch('touchend',{isTrusted:true,touches:[],changedTouches:[{identifier:1}]});assert.equal(auditAudio.unlocks,beforeInterruptedTouch,cancel+' must discard stale native-touch activation');assert.equal(auditView.pending.length,0);assert.deepEqual(snapshot().session,committed);if(cancel==='visibilitychange')visibility(false);
 }
 assert.equal(auditAudio.alignments,accentsBeforeCancel,'all small/canceled gestures stay free of alignment accents');
 canvas.dispatch('pointerdown');canvas.dispatch('pointerdown',{pointerId:2,isPrimary:false});canvas.dispatch('pointermove',{pointerId:2,clientX:230});canvas.dispatch('pointerup',{pointerId:2,clientX:230});assert.equal(auditView.preview,null);canvas.dispatch('pointercancel');

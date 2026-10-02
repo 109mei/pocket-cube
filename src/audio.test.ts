@@ -1,7 +1,7 @@
 import {it,expect,vi} from 'vitest';
 import {MotionAudio,frictionSamples,settleSamples,loadAudioSettings} from './audio';
 class Param{value=0;calls:number[][]=[];setValueAtTime(v:number,t:number){this.calls.push([v,t,0]);this.value=v;}setTargetAtTime(v:number,t:number,c:number){this.calls.push([v,t,c]);this.value=v;}cancelScheduledValues(_t:number){}}
-class Node{gain=new Param();frequency=new Param();Q=new Param();buffer:any;loop=false;onended:(()=>void)|null=null;starts=0;stops=0;type='';connect(_n:any){}disconnect(){}start(){this.starts++;}stop(){this.stops++;}}
+class Node{gain=new Param();frequency=new Param();Q=new Param();playbackRate=new Param();buffer:any;loop=false;onended:(()=>void)|null=null;starts=0;stops=0;type='';connect(_n:any){}disconnect(){}start(){this.starts++;}stop(){this.stops++;}}
 function context(){const sources:Node[]=[],gains:Node[]=[];const ctx={state:'suspended',currentTime:1,sampleRate:8000,destination:{},resume:vi.fn(async()=>{ctx.state='running';}),suspend:vi.fn(async()=>{ctx.state='suspended';}),close:vi.fn(async()=>{ctx.state='closed';}),createBuffer:(_channels:number,length:number,_rate:number)=>{const data=new Float32Array(length);return{getChannelData:()=>data};},createBufferSource:()=>{const node=new Node();sources.push(node);return node;},createGain:()=>{const node=new Node();gains.push(node);return node;},createBiquadFilter:()=>new Node()};return{ctx,sources,gains};}
 const flush=async()=>{for(let n=0;n<5;n++)await Promise.resolve();};
 it('makes original smooth bounded material noise and a soft zero-ended alignment sound',()=>{
@@ -60,4 +60,18 @@ it('shows pending activation and preserves a saved100percent setting through ret
 });
 it('cancels a pending audition when the sound dialog is closed before resume completes',async()=>{
  const {ctx,gains}=context();let finish!:()=>void;ctx.resume=vi.fn(()=>new Promise<void>(resolve=>{finish=()=>{ctx.state='running';resolve();};}));const sound=new MotionAudio(null,()=>ctx as unknown as AudioContext);const audition=sound.audition();sound.stopMotion();finish();expect(await audition).toBe(false);expect(gains[1].gain.calls.every(c=>c[0]===0)).toBe(true);
+});
+it('forms separated dry plastic contact clusters rather than a steady airy wash',()=>{
+ for(const rate of [8000,44100,48000]){
+  const samples=frictionSamples(rate,13),energy:number[]=[];
+  for(let start=0;start<samples.length;start+=Math.round(rate*.01)){const window=samples.slice(start,start+Math.round(rate*.01));energy.push(Math.sqrt(window.reduce((sum,value)=>sum+value*value,0)/window.length));}
+  energy.sort((a,b)=>a-b);expect(energy.at(-1)!/energy[Math.floor(energy.length*.25)]).toBeGreaterThan(3);
+  expect(Math.abs(samples[0]-samples.at(-1)!)).toBeLessThan(.02);
+ }
+});
+it('uses a short noise-based detent rather than a long pitched alignment tail',()=>{
+ for(const rate of [8000,44100,48000]){const samples=settleSamples(rate,7);expect(samples.length/rate).toBeLessThanOrEqual(.09);expect(samples[0]).toBe(0);expect(samples.at(-1)).toBe(0);expect(samples.some(value=>Math.abs(value)>.02)).toBe(true);}
+});
+it('couples the single contact loop rate to angular speed within restrained bounds',async()=>{
+ const {ctx,sources}=context();const sound=new MotionAudio(null,()=>ctx as unknown as AudioContext);await sound.unlock(true);sound.beginMotion(0,0);ctx.currentTime=2;sound.motion(.02,100);const slow=sources[0].playbackRate.calls.at(-1)?.[0];ctx.currentTime=3;sound.motion(1.02,200);const fast=sources[0].playbackRate.calls.at(-1)?.[0];expect(slow).toBeGreaterThanOrEqual(.55);expect(fast).toBeGreaterThan(slow!);expect(fast).toBeLessThanOrEqual(1.5);expect(sources).toHaveLength(1);
 });

@@ -18,7 +18,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML=`<main class="app">
  <details class="helper"><summary id="helper-toggle">ボタンで回す</summary><div class="helper-panel"><div class="faces" aria-label="回す面">${['右','左','上','下','前','奥'].map((label,i)=>`<button class="face ${i===4?'active':''}" data-face="${i}" aria-pressed="${i===4}"><span>${['R','L','U','D','F','B'][i]}</span>${label}</button>`).join('')}</div><div class="turns"><button id="ccw">↶ 反時計回り</button><button id="cw">↷ 時計回り</button></div><p class="helper-note">基準の面を選択 · その面を正面から見た回転方向</p></div></details>
  <footer class="footer"><i></i> YOUR PROGRESS IS SAVED</footer>
  </main><div id="toast" class="toast" role="status"></div>
- <dialog id="sound-dialog"><h2>回す音</h2><p>指の動きに合わせて、やわらかな擦れ音。そろう瞬間は、静かな余韻。</p><button id="mute" class="sound-mute" aria-pressed="false">音を消す</button><label class="volume-label" for="volume">音量 <output id="volume-value">45%</output></label><input id="volume" type="range" min="0" max="100" step="5" value="45" aria-label="音量"><p id="sound-status" class="sound-status" role="status"></p><button id="sound-test" class="sound-mute">音を開始・試聴</button><button class="primary" data-close>閉じる</button></dialog>
+ <dialog id="sound-dialog"><h2>回す音</h2><p>回す速さに合わせた、乾いたカラカラ音と擦れ音。そろう瞬間は、小さくカチャッ。</p><button id="mute" class="sound-mute" aria-pressed="false">音を消す</button><label class="volume-label" for="volume">音量 <output id="volume-value">45%</output></label><input id="volume" type="range" min="0" max="100" step="5" value="45" aria-label="音量"><p id="sound-status" class="sound-status" role="status"></p><button id="sound-test" class="sound-mute">音を開始・試聴</button><button class="primary" data-close>閉じる</button></dialog>
  <dialog id="help-dialog"><h2>指先で、ひとひねり。</h2><ul><li>スクランブルで、色をシャッフル。</li><li>色の面を上下・左右にスワイプすると、その列や行が回ります。</li><li>キューブのない余白をドラッグすると、上下も裏側も360°見渡せます。</li><li>操作に迷ったら「ボタンで回す」。</li></ul><p>6つの面を、それぞれ同じ色にそろえよう。時間は最初の1手から。画面を離れると一時停止します。</p><button class="primary" data-close>やってみる</button></dialog>
  <dialog id="confirm-dialog"><h2 id="confirm-title"></h2><p id="confirm-copy"></p><div class="dialog-actions"><button id="confirm-no">キャンセル</button><button id="confirm-yes">続ける</button></div></dialog>
  <dialog id="solved-dialog"><div class="celebration-icon">✦</div><h2>きれいに、そろった！</h2><p id="solved-copy"></p><button class="primary" data-close>いい気分。</button></dialog>`;
@@ -85,6 +85,13 @@ function selectFace(index:number){
 document.querySelectorAll<HTMLButtonElement>('[data-face]').forEach(button=>button.onclick=()=>selectFace(Number(button.dataset.face)));
 for(const [id,sign] of [['cw',-1],['ccw',1]] as const)$(id).onclick=()=>{const normal=FACE_NORMALS[selectedFace],index=normal.findIndex(n=>n!==0);enqueue({axis:(['x','y','z'] as const)[index],layer:normal[index] as -1|1,direction:sign*normal[index] as -1|1});};
 const canvas=$<HTMLCanvasElement>('cube');
+// TouchEvent activation is independent of pointer ownership: pointerup may
+// already have cleared the gesture and started its settle animation.
+let audioTouchId:number|null=null;
+canvas.addEventListener('touchstart',event=>{if(event.isTrusted&&audioTouchId===null&&event.touches.length===1)audioTouchId=event.changedTouches[0]?.identifier??null;},{passive:true});
+canvas.addEventListener('touchend',event=>{if(!event.isTrusted||audioTouchId===null||!Array.from(event.changedTouches).some(touch=>touch.identifier===audioTouchId))return;audioTouchId=null;void sound.unlock(true);},{passive:true});
+canvas.addEventListener('touchcancel',event=>{if(audioTouchId!==null&&Array.from(event.changedTouches).some(touch=>touch.identifier===audioTouchId))audioTouchId=null;},{passive:true});
+canvas.addEventListener('click',event=>{if(event.isTrusted)void sound.unlock(true);});
 type Gesture={id:number;startX:number;startY:number;x:number;y:number;hit:Hit|null;projections:DragProjection[];lock:DragLock|null;angle:number};
 let gesture:Gesture|null=null;
 function clearGesture(){
@@ -99,6 +106,7 @@ function updateDrag(g:Gesture,x:number,y:number){
  if(g.lock){g.angle=dragAngle(g.lock,delta);view.previewMove(g.lock.move,g.angle);sound.motion(g.angle);}
 }
 function finishGesture(canceled:boolean,x?:number,y?:number){
+ if(canceled)audioTouchId=null;
  const current=gesture;if(!current)return;
  if(!canceled&&x!==undefined&&y!==undefined&&current.hit)updateDrag(current,x,y);
  const release=current.lock?releaseDrag(current.lock,current.angle,canceled):null;

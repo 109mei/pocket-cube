@@ -4,7 +4,7 @@
 
 Environment: Node.js 24.19.0, Linux. Date: 2026-10-02.
 
-- `npm test`: 93 passing unit/scene/projection/camera/audio tests across10 files, plus5 controller integration scenarios and108 actual scene/view animation cases.
+- `npm test`: 96 passing unit/scene/projection/camera/audio tests across10 files, plus6 controller integration scenarios and108 actual scene/view animation cases.
 - `npm run build`: TypeScript type checking and Vite production build pass.
 - Exact move-four-times and inverse checks for all 18 signed axis/layer turns.
 - 100 seeded 100-move scrambles, replayed backward, restore the exact state.
@@ -66,7 +66,7 @@ Original procedural colored noise supplies a single looping friction voice drive
 
 Audio is lazy: no AudioContext is constructed before interaction. Saved mute and volume are validated separately from cube saves; missing or denied Web Audio/storage remains nonfatal. Hidden-page suspension discards stale tails; pagehide closes audio and releases a held pointer; a subsequent user gesture can safely recreate the context. Resume races and failures are tested. Repeated stationary samples obey the same automation rate cap; an explicit stop still fades immediately. Defaults are deliberately quiet, with master gain capped at0.18. Motion gain is bounded at0.8, friction PCM peak at0.5, automation at90Hz, and alignment creation at12.5Hz with no more than two finite accents. These are software limits, not measured device loudness.
 
-Fifteen unit tests exercise generated PCM bounds/smoothness, lazy unlock, rate limits, stillness fade, mute/volume persistence, hide/close/recreate, resume races, invalid settings and unavailable APIs. Controller-port checks cover motion before release and silence for cancellation/noop paths; actual CubeView animation methods report angular progress. The production build separates the stable Three.js vendor chunk for caching.
+Eighteen unit tests exercise generated PCM bounds/smoothness, lazy unlock, rate limits, stillness fade, mute/volume persistence, hide/close/recreate, resume races, invalid settings and unavailable APIs. Controller-port checks cover motion before release and silence for cancellation/noop paths; actual CubeView animation methods report angular progress. The production build separates the stable Three.js vendor chunk for caching.
 
 No subjective sound-quality or real-device listening claim is made. Safari audio unlock, perceived softness and the user's preferred level require a device audition. No external sound assets, paid services or audio telemetry are used.
 
@@ -79,3 +79,14 @@ Two deterministic regressions reproduced a genuine code failure chain: the initi
 The existing sound dialog now offers an explicit **音を開始・試聴** action and reports idle/waiting/running/paused/muted/unavailable engine state. Its short audition uses the same bounded material voice without requiring WebGL or a cube move. Saved volume, including100%, and the existing low master-gain limit are preserved. No OS audio category, silent-switch behavior or device security setting is changed. Engine-running status is not a claim that speakers produced audible sound.
 
 Five added unit regressions cover pending activation retry, stale same-context rejection, bounded independent audition/status and preserving100% settings and canceling an audition if its dialog closes before audio resume completes. Controller checks cover touch/pen release, canceled gestures and audition with WebGL unavailable. The user-specific silence is not declared resolved until playback is confirmed on that device.
+
+
+## Ordinary-touch activation and plastic-material revision
+
+The device tester subsequently confirmed that rotation sound was audible after opening the sound settings. This confirms a working audio output on that device but exposes an ordinary-touch activation gap. A direct, trusted native `touchend` handler now retries activation independently of the pointer gesture, which may already have ended and started its settle animation; a trusted canvas tap also retries. The primary native-touch ID is tracked separately, a secondary finger cannot trigger it, and secondary-only cancellation preserves the primary touch. True interruption clears it, while a normal small-drag rollback retains the eligible release. These listeners only unlock audio and cannot create turns or alignment accents. Actual Safari touch-only activation still requires a device retest; synthetic controller ports do not prove native browser policy.
+
+The procedural texture now uses short, irregular filtered-noise contact clusters above a quiet rubbing bed, with a bounded0.55–1.5× loop rate linked to angular speed. Alignment is a75ms pair of damped noise contacts; the previous low pitched carrier is removed. Master gain, user volume, event/voice limits, cancellation silence and hidden-page behavior remain unchanged. Tests check clustered energy, finite/zero-ended samples, shorter alignment duration, and speed-linked bounded rate. An independent scan over24 seeds and8/44.1/48/96kHz found friction peaks at0.5 and detent peaks no higher than0.087853, with zero endpoints; these are PCM properties, not a subjective listening verdict.
+
+Controller regressions cover native touchend without click, pointerup→touchend→click while a settle is busy, primary/secondary touch cancellation, synthetic-event rejection, and stale releases after pointercancel/capture loss/resize/blur/visibility changes. The revised timbre's realism and first ordinary-touch activation remain device acceptance checks.
+
+An additional integration scenario runs the real controller and MotionAudio together, replacing only DOM/view/native-AudioContext boundaries. It deliberately keeps the pointerup resume pending, then allows the following touchend while the settle queue is busy. It verifies that the same context reaches running, generated PCM is nonzero, all four graph connections reach the destination, and the extra click still results in exactly one commit and one alignment. This scenario is included in CI and does not emulate native Safari activation rules.

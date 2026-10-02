@@ -9,7 +9,7 @@
     "test": "npm run test:unit && npm run test:controller && npm run test:view",
     "preview": "vite preview --host 127.0.0.1",
     "test:unit": "vitest run --dir src",
-    "test:controller": "node tests/controller.mjs . normal && node tests/controller.mjs . storage-denied && node tests/controller.mjs . webgl-unavailable && node tests/controller.mjs . context-preview && node tests/controller.mjs . limit",
+    "test:controller": "node tests/controller.mjs . normal && node tests/controller.mjs . storage-denied && node tests/controller.mjs . webgl-unavailable && node tests/controller.mjs . context-preview && node tests/controller.mjs . limit && node tests/controller.mjs . real-audio",
     "test:view": "node tests/view-animation.mjs"
   },
   "dependencies": {

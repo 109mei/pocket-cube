@@ -7,18 +7,26 @@ export function loadAudioSettings(storage:SettingsStore|null):Settings{
  try{const raw=storage?.getItem(KEY);if(!raw||raw.length>256)return{...DEFAULT};const value=JSON.parse(raw);if(value.version===1&&Number.isFinite(value.volume)&&value.volume>=0&&value.volume<=1&&typeof value.muted==='boolean')return{volume:value.volume,muted:value.muted};}catch{/* Sound is optional. */}
  return{...DEFAULT};
 }
-/** Original band-limited material noise. Circular filter warm-up avoids a loop seam. */
-export function frictionSamples(rate:number,seed:number):Float32Array{
+/** Seeded, band-limited plastic texture; circular warm-up avoids a filter seam. */
+function materialNoise(rate:number,seed:number):Float32Array{
  const length=Math.round(rate*1.2),noise=new Float32Array(length),result=new Float32Array(length);let state=seed>>>0;
  for(let i=0;i<length;i++){state=(Math.imul(state,1664525)+1013904223)>>>0;noise[i]=state/2147483648-1;}
- const low=1-Math.exp(-2*Math.PI*900/rate),high=1-Math.exp(-2*Math.PI*90/rate);let a=0,b=0,dc=0;
+ const low=1-Math.exp(-2*Math.PI*1100/rate),high=1-Math.exp(-2*Math.PI*220/rate);let a=0,b=0,dc=0;
  for(let pass=0;pass<3;pass++)for(let i=0;i<length;i++){a+=low*(noise[i]-a);b+=low*(a-b);dc+=high*(b-dc);result[i]=b-dc;}
  let peak=0;for(const value of result)peak=Math.max(peak,Math.abs(value));for(let i=0;i<length;i++)result[i]*=.5/(peak||1);return result;
 }
-/** A short rounded settling breath, with no impulse or sharp attack. */
+/** Dry, irregular contacts over a low rubbing bed, never a continuous pitched tone. */
+export function frictionSamples(rate:number,seed:number):Float32Array{
+ const noise=materialNoise(rate,seed),result=new Float32Array(noise.length),envelope=new Float32Array(noise.length).fill(.09);let state=(seed^0x9e3779b9)>>>0;
+ const random=()=>{state=(Math.imul(state,1664525)+1013904223)>>>0;return state/4294967296;};
+ for(let time=.015;time<1.2;time+=.025+random()*.062){const length=Math.round(rate*(.008+random()*.015)),start=Math.round(time*rate),strength=.45+random()*.55;for(let i=0;i<length;i++){const phase=i/(length-1),shape=Math.sin(Math.PI*phase)**2*Math.exp(-phase*3);envelope[(start+i)%noise.length]+=strength*shape;}}
+ let peak=0;for(let i=0;i<noise.length;i++){result[i]=noise[i]*envelope[i];peak=Math.max(peak,Math.abs(result[i]));}
+ for(let i=0;i<result.length;i++){const edge=Math.min(1,i/(rate*.003),(result.length-1-i)/(rate*.003));result[i]*=.5/(peak||1)*edge;}return result;
+}
+/** Two short, damped plastic contacts at alignment. Noise-only: no synthesized note. */
 export function settleSamples(rate:number,seed:number):Float32Array{
- const noise=frictionSamples(rate,seed),length=Math.round(rate*.16),result=new Float32Array(length);
- for(let i=0;i<length;i++){const t=i/rate,phase=i/(length-1),envelope=Math.sin(Math.PI*phase)**2*Math.exp(-phase*2);const body=Math.sin(2*Math.PI*(145*t-90*t*t));result[i]=(noise[i]*.7+body*.12)*envelope;}
+ const noise=materialNoise(rate,seed),length=Math.round(rate*.075),result=new Float32Array(length);
+ for(const [start,duration,strength] of [[.002,.027,.95],[.031,.034,.5]])for(let i=0;i<Math.round(duration*rate);i++){const index=Math.round(start*rate)+i,phase=i/(duration*rate),envelope=Math.sin(Math.PI*phase)**2*Math.exp(-phase*4);result[index]+=noise[index]*envelope*strength;}
  result[0]=0;result[length-1]=0;return result;
 }
 /** Optional audio adapter. One looping friction voice, bounded automation and finite accents. */
@@ -46,7 +54,7 @@ export class MotionAudio{
     const context=this.create();if(!context){this.failed=true;return Promise.resolve(false);}this.context=context;this.failed=false;
     this.master=context.createGain();this.master.gain.setValueAtTime(0,context.currentTime);this.master.connect(context.destination);
     this.motionGain=context.createGain();this.motionGain.gain.setValueAtTime(0,context.currentTime);this.motionGain.connect(this.master);
-    this.filter=context.createBiquadFilter();this.filter.type='lowpass';this.filter.frequency.setValueAtTime(1100,context.currentTime);this.filter.Q.setValueAtTime(.5,context.currentTime);this.filter.connect(this.motionGain);
+    this.filter=context.createBiquadFilter();this.filter.type='lowpass';this.filter.frequency.setValueAtTime(1800,context.currentTime);this.filter.Q.setValueAtTime(.5,context.currentTime);this.filter.connect(this.motionGain);
     this.source=context.createBufferSource();this.source.buffer=this.buffer(frictionSamples(context.sampleRate,317));this.source.loop=true;this.source.connect(this.filter);this.source.start();
    }
    const context=this.context;
@@ -77,7 +85,7 @@ export class MotionAudio{
   if(now-this.lastAutomation<1/90)return;this.lastAutomation=now;
   const gain=this.motionGain.gain;gain.cancelScheduledValues(now);gain.setTargetAtTime(level,now,.02);
   // No further input means no movement: fade even without a pointerup event.
-  gain.setTargetAtTime(0,now+.075,.03);this.filter.frequency.setTargetAtTime(650+speed*55,now,.035);
+  gain.setTargetAtTime(0,now+.075,.03);this.filter.frequency.setTargetAtTime(1450+speed*35,now,.035);this.source?.playbackRate.setTargetAtTime(Math.min(1.5,.55+speed*.08),now,.04);
  }
  stopMotion(){this.auditionAttempt++;this.last=null;if(!this.context||!this.motionGain)return;const now=this.context.currentTime;this.motionGain.gain.cancelScheduledValues(now);this.motionGain.gain.setTargetAtTime(0,now,.02);}
  settle(){
