@@ -18,7 +18,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML=`<main class="app">
  <details class="helper"><summary id="helper-toggle">ボタンで回す</summary><div class="helper-panel"><div class="faces" aria-label="回す面">${['右','左','上','下','前','奥'].map((label,i)=>`<button class="face ${i===4?'active':''}" data-face="${i}" aria-pressed="${i===4}"><span>${['R','L','U','D','F','B'][i]}</span>${label}</button>`).join('')}</div><div class="turns"><button id="ccw">↶ 反時計回り</button><button id="cw">↷ 時計回り</button></div><p class="helper-note">基準の面を選択 · その面を正面から見た回転方向</p></div></details>
  <footer class="footer"><i></i> YOUR PROGRESS IS SAVED</footer>
  </main><div id="toast" class="toast" role="status"></div>
- <dialog id="sound-dialog"><h2>回す音</h2><p>指の動きに合わせて、やわらかな擦れ音。そろう瞬間は、静かな余韻。</p><button id="mute" class="sound-mute" aria-pressed="false">音を消す</button><label class="volume-label" for="volume">音量 <output id="volume-value">45%</output></label><input id="volume" type="range" min="0" max="100" step="5" value="45" aria-label="音量"><button class="primary" data-close>閉じる</button></dialog>
+ <dialog id="sound-dialog"><h2>回す音</h2><p>指の動きに合わせて、やわらかな擦れ音。そろう瞬間は、静かな余韻。</p><button id="mute" class="sound-mute" aria-pressed="false">音を消す</button><label class="volume-label" for="volume">音量 <output id="volume-value">45%</output></label><input id="volume" type="range" min="0" max="100" step="5" value="45" aria-label="音量"><p id="sound-status" class="sound-status" role="status"></p><button id="sound-test" class="sound-mute">音を開始・試聴</button><button class="primary" data-close>閉じる</button></dialog>
  <dialog id="help-dialog"><h2>指先で、ひとひねり。</h2><ul><li>スクランブルで、色をシャッフル。</li><li>色の面を上下・左右にスワイプすると、その列や行が回ります。</li><li>キューブのない余白をドラッグすると、上下も裏側も360°見渡せます。</li><li>操作に迷ったら「ボタンで回す」。</li></ul><p>6つの面を、それぞれ同じ色にそろえよう。時間は最初の1手から。画面を離れると一時停止します。</p><button class="primary" data-close>やってみる</button></dialog>
  <dialog id="confirm-dialog"><h2 id="confirm-title"></h2><p id="confirm-copy"></p><div class="dialog-actions"><button id="confirm-no">キャンセル</button><button id="confirm-yes">続ける</button></div></dialog>
  <dialog id="solved-dialog"><div class="celebration-icon">✦</div><h2>きれいに、そろった！</h2><p id="solved-copy"></p><button class="primary" data-close>いい気分。</button></dialog>`;
@@ -56,7 +56,7 @@ function update(){
  $('helper-toggle').setAttribute('aria-disabled',String(queue.busy||isHolding));
  document.querySelectorAll<HTMLButtonElement>('[data-face]').forEach(button=>button.disabled=disabled||isHolding);
 }
-function enqueue(move:Move){if(disabled||isHolding)return;sound.unlock();if(!queue.enqueue({move}))toast('回転が終わってから、もう一度。');}
+function enqueue(move:Move){if(disabled||isHolding)return;void sound.unlock(true);if(!queue.enqueue({move}))toast('回転が終わってから、もう一度。');}
 let confirmAction:(()=>void)|null=null;
 function confirm(title:string,copy:string,action:()=>void){$('confirm-title').textContent=title;$('confirm-copy').textContent=copy;confirmAction=action;$<HTMLDialogElement>('confirm-dialog').showModal();}
 $('confirm-no').onclick=()=>{$<HTMLDialogElement>('confirm-dialog').close();confirmAction=null;};
@@ -64,14 +64,18 @@ $('confirm-yes').onclick=()=>{$<HTMLDialogElement>('confirm-dialog').close();con
 $<HTMLDialogElement>('confirm-dialog').addEventListener('cancel',()=>{confirmAction=null;});
 $('scramble').onclick=()=>{const go=()=>{session=newSession(makeScramble());view.sync(session.cube);persist();update();toast('準備完了。最初の1手で、計測スタート。');};if(session.history.length>0&&!isSolved(session.cube))confirm('新しく、始める？','今のキューブをシャッフルして、手数と時間をリセットします。',go);else go();};
 $('reset').onclick=()=>confirm('最初の状態に戻す？','6面の色をそろえて、手数と時間をリセットします。',()=>{session=newSession();view.sync(session.cube);persist();update();toast('また、ひとひねり。');});
-$('undo').onclick=()=>{const last=session.history.at(-1);if(last&&!queue.busy){sound.unlock();queue.enqueue({move:inverse(last),undo:true});}};
+$('undo').onclick=()=>{const last=session.history.at(-1);if(last&&!queue.busy){void sound.unlock(true);queue.enqueue({move:inverse(last),undo:true});}};
 $('helper-toggle').addEventListener('click',event=>{if(isHolding||queue.busy)event.preventDefault();});
 $('home').onclick=()=>view?.home();$('help').onclick=()=>$<HTMLDialogElement>('help-dialog').showModal();
-function updateSoundControls(){const preferences=sound.preferences;$('mute').textContent=preferences.muted?'音を鳴らす':'音を消す';$('mute').setAttribute('aria-pressed',String(preferences.muted));$<HTMLInputElement>('volume').value=String(Math.round(preferences.volume*100));$('volume-value').textContent=`${Math.round(preferences.volume*100)}%`;}
-$('sound-settings').onclick=()=>{sound.unlock();updateSoundControls();$<HTMLDialogElement>('sound-dialog').showModal();};
-$('mute').onclick=()=>{sound.setMuted(!sound.preferences.muted);sound.unlock();updateSoundControls();};
-$('volume').addEventListener('input',()=>{sound.setVolume(Number($<HTMLInputElement>('volume').value)/100);sound.unlock();updateSoundControls();});
-document.querySelectorAll<HTMLButtonElement>('[data-close]').forEach(button=>button.onclick=()=>button.closest('dialog')!.close());
+const audioStatusText={idle:'音声はまだ開始されていません。',waiting:'音声の開始を待っています。下のボタンで再試行できます。',running:'音声エンジンは起動済みです。試聴で出力を確認できます。',paused:'音声は一時停止中です。下のボタンで再開できます。',hidden:'画面を離れているため停止しています。',muted:'消音中です。「音を鳴らす」で解除できます。',zero:'音量が0%です。',unavailable:'音声を開始できませんでした。下のボタンで再試行できます。'};
+function updateSoundStatus(){const text=audioStatusText[sound.status];if($('sound-status').textContent!==text)$('sound-status').textContent=text;}
+function updateSoundControls(){const preferences=sound.preferences;$('mute').textContent=preferences.muted?'音を鳴らす':'音を消す';$('mute').setAttribute('aria-pressed',String(preferences.muted));$<HTMLInputElement>('volume').value=String(Math.round(preferences.volume*100));$('volume-value').textContent=`${Math.round(preferences.volume*100)}%`;$<HTMLButtonElement>('sound-test').disabled=preferences.muted||preferences.volume===0;updateSoundStatus();}
+$('sound-settings').onclick=()=>{void sound.unlock(true);updateSoundControls();$<HTMLDialogElement>('sound-dialog').showModal();};
+$('sound-test').onclick=()=>{void sound.audition().then(updateSoundStatus);updateSoundStatus();};
+$<HTMLDialogElement>('sound-dialog').addEventListener('cancel',()=>sound.stopMotion());
+$('mute').onclick=()=>{sound.setMuted(!sound.preferences.muted);void sound.unlock(true);updateSoundControls();};
+$('volume').addEventListener('input',()=>{sound.setVolume(Number($<HTMLInputElement>('volume').value)/100);void sound.unlock(true);updateSoundControls();});
+document.querySelectorAll<HTMLButtonElement>('[data-close]').forEach(button=>button.onclick=()=>{const dialog=button.closest('dialog')!;if(dialog.id==='sound-dialog')sound.stopMotion();dialog.close();});
 function selectFace(index:number){
  if(isHolding||disabled)return;
  selectedFace=index;
@@ -107,7 +111,7 @@ function finishGesture(canceled:boolean,x?:number,y?:number){
 canvas.addEventListener('contextmenu',event=>event.preventDefault());
 canvas.addEventListener('pointerdown',event=>{
  if(disabled||queue.busy||!beginPointer(!!gesture,event.isPrimary)||event.button!==0)return;
- sound.unlock();const hit=view.pick(event.clientX,event.clientY);if(hit)sound.beginMotion(0);
+ if(event.pointerType!=='touch'&&event.pointerType!=='pen')void sound.unlock(true);const hit=view.pick(event.clientX,event.clientY);if(hit)sound.beginMotion(0);
  gesture={id:event.pointerId,startX:event.clientX,startY:event.clientY,x:event.clientX,y:event.clientY,hit,projections:hit?view.tangents(hit):[],lock:null,angle:0};
  isHolding=!!hit;canvas.setPointerCapture(event.pointerId);if(hit)view.highlight(hit.normal);update();
 });
@@ -116,14 +120,14 @@ canvas.addEventListener('pointermove',event=>{
  if(gesture.hit)updateDrag(gesture,event.clientX,event.clientY);else view.orbit(event.clientX-gesture.x,event.clientY-gesture.y);
  gesture.x=event.clientX;gesture.y=event.clientY;
 });
-canvas.addEventListener('pointerup',event=>{if(gesture?.id===event.pointerId)finishGesture(false,event.clientX,event.clientY);});
+canvas.addEventListener('pointerup',event=>{if(gesture?.id===event.pointerId){if(event.pointerType==='touch'||event.pointerType==='pen')void sound.unlock(true);finishGesture(false,event.clientX,event.clientY);}});
 canvas.addEventListener('pointercancel',event=>{if(gesture?.id===event.pointerId)finishGesture(true);});
 canvas.addEventListener('lostpointercapture',event=>{if(gesture?.id===event.pointerId)finishGesture(true);});
 window.addEventListener('resize',()=>{finishGesture(true);refreshViewport();});
 window.visualViewport?.addEventListener('resize',()=>{finishGesture(true);refreshViewport();});
 window.addEventListener('blur',()=>finishGesture(true));
 let last=performance.now(),lastSaved=last;
-function clock(now:number){const delta=now-last;last=now;if(!document.hidden&&!disabled)session=tickSession(session,delta);$('timer').textContent=formatTime(session.elapsedMs);if(now-lastSaved>5000){persist();lastSaved=now;}requestAnimationFrame(clock);}
+function clock(now:number){if($<HTMLDialogElement>('sound-dialog').open)updateSoundStatus();const delta=now-last;last=now;if(!document.hidden&&!disabled)session=tickSession(session,delta);$('timer').textContent=formatTime(session.elapsedMs);if(now-lastSaved>5000){persist();lastSaved=now;}requestAnimationFrame(clock);}
 document.addEventListener('visibilitychange',()=>{last=performance.now();finishGesture(true);sound.setHidden(document.hidden);persist();});
 window.addEventListener('pagehide',()=>{finishGesture(true);persist();sound.close();});
 update();persist();requestAnimationFrame(clock);

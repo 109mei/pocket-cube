@@ -4,7 +4,7 @@
 
 Environment: Node.js 24.19.0, Linux. Date: 2026-10-02.
 
-- `npm test`: 88 passing unit/scene/projection/camera/audio tests across10 files, plus5 controller integration scenarios and108 actual scene/view animation cases.
+- `npm test`: 93 passing unit/scene/projection/camera/audio tests across10 files, plus5 controller integration scenarios and108 actual scene/view animation cases.
 - `npm run build`: TypeScript type checking and Vite production build pass.
 - Exact move-four-times and inverse checks for all 18 signed axis/layer turns.
 - 100 seeded 100-move scrambles, replayed backward, restore the exact state.
@@ -66,6 +66,16 @@ Original procedural colored noise supplies a single looping friction voice drive
 
 Audio is lazy: no AudioContext is constructed before interaction. Saved mute and volume are validated separately from cube saves; missing or denied Web Audio/storage remains nonfatal. Hidden-page suspension discards stale tails; pagehide closes audio and releases a held pointer; a subsequent user gesture can safely recreate the context. Resume races and failures are tested. Repeated stationary samples obey the same automation rate cap; an explicit stop still fades immediately. Defaults are deliberately quiet, with master gain capped at0.18. Motion gain is bounded at0.8, friction PCM peak at0.5, automation at90Hz, and alignment creation at12.5Hz with no more than two finite accents. These are software limits, not measured device loudness.
 
-Ten unit tests exercise generated PCM bounds/smoothness, lazy unlock, rate limits, stillness fade, mute/volume persistence, hide/close/recreate, resume races, invalid settings and unavailable APIs. Controller-port checks cover motion before release and silence for cancellation/noop paths; actual CubeView animation methods report angular progress. The production build separates the stable Three.js vendor chunk for caching.
+Fifteen unit tests exercise generated PCM bounds/smoothness, lazy unlock, rate limits, stillness fade, mute/volume persistence, hide/close/recreate, resume races, invalid settings and unavailable APIs. Controller-port checks cover motion before release and silence for cancellation/noop paths; actual CubeView animation methods report angular progress. The production build separates the stable Three.js vendor chunk for caching.
 
 No subjective sound-quality or real-device listening claim is made. Safari audio unlock, perceived softness and the user's preferred level require a device audition. No external sound assets, paid services or audio telemetry are used.
+
+## Touch audio activation correction
+
+A tester reported silence while the current sound dialog visibly showed sound enabled at100%. That excludes an old interface or app-mute setting in that supplied screenshot, but does not establish the device's audio route or browser engine state.
+
+Two deterministic regressions reproduced a genuine code failure chain: the initial touch-down attempted audio before the platform's eligible touch-release activation, and a pending resume promise then suppressed every later retry, including a valid sound-settings click. The correction unlocks touch/pen input synchronously on release, retains mouse-down activation, and permits a fresh real-gesture retry while ignoring stale same-context completion/rejection callbacks. Cancellation does not unlock. These behaviors follow the [HTML activation-event model](https://html.spec.whatwg.org/multipage/interaction.html#activation-triggering-input-event) and [Web Audio pending-resume rules](https://www.w3.org/TR/webaudio/#dom-audiocontext-resume).
+
+The existing sound dialog now offers an explicit **音を開始・試聴** action and reports idle/waiting/running/paused/muted/unavailable engine state. Its short audition uses the same bounded material voice without requiring WebGL or a cube move. Saved volume, including100%, and the existing low master-gain limit are preserved. No OS audio category, silent-switch behavior or device security setting is changed. Engine-running status is not a claim that speakers produced audible sound.
+
+Five added unit regressions cover pending activation retry, stale same-context rejection, bounded independent audition/status and preserving100% settings and canceling an audition if its dialog closes before audio resume completes. Controller checks cover touch/pen release, canceled gestures and audition with WebGL unavailable. The user-specific silence is not declared resolved until playback is confirmed on that device.

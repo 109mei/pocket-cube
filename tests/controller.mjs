@@ -37,7 +37,7 @@ const compiled = await build({
  define: { 'import.meta.env.DEV': 'true' },
  plugins: [{ name: 'controller-test-ports', setup(builder) {
   builder.onLoad({ filter: /\/view\.ts$/ }, () => ({ contents: fakeView, loader: 'ts' }));
-  builder.onLoad({filter:/\/audio\.ts$/},()=>({loader:'ts',contents:`export class MotionAudio {constructor(){globalThis.auditAudio=this;this.alignments=0;this.movements=[];this.stops=0;this.unlocks=0;this.preferences={volume:.45,muted:false};}unlock(){this.unlocks++;}beginMotion(angle){this.begin=angle;}motion(angle){this.movements.push(angle);}stopMotion(){this.stops++;}settle(){this.alignments++;}setHidden(hidden){this.hidden=hidden;}close(){this.closed=true;}setMuted(muted){this.preferences.muted=muted;}setVolume(volume){this.preferences.volume=volume;}}` }));
+  builder.onLoad({filter:/\/audio\.ts$/},()=>({loader:'ts',contents:`export class MotionAudio {constructor(){globalThis.auditAudio=this;this.alignments=0;this.movements=[];this.stops=0;this.unlocks=0;this.preferences={volume:.45,muted:false};this.status='idle';}unlock(force){this.lastUnlockForce=force;this.unlocks++;return Promise.resolve(true);}audition(){this.auditions=(this.auditions??0)+1;return Promise.resolve(true);}beginMotion(angle){this.begin=angle;}motion(angle){this.movements.push(angle);}stopMotion(){this.stops++;}settle(){this.alignments++;}setHidden(hidden){this.hidden=hidden;}close(){this.closed=true;}setMuted(muted){this.preferences.muted=muted;}setVolume(volume){this.preferences.volume=volume;}}` }));
   builder.onLoad({ filter: /\.css$/ }, () => ({ contents: '', loader: 'js' }));
  }}],
 });
@@ -90,7 +90,7 @@ function grab(dx,dy=0){canvas.dispatch('pointerdown');canvas.dispatch('pointermo
 function release(dx,dy=0){canvas.dispatch('pointerup',{clientX:100+dx,clientY:100+dy});}
 function assertGated(){for(const id of ['cw','ccw','scramble','reset','undo','home'])assert(element(id).disabled,id+' must be disabled while grabbed');assert(faceButtons.every(button=>button.disabled));}
 if(mode==='webgl-unavailable') {
- assert.equal(element('recovery').hidden,false);assert.match(element('recovery-copy').textContent,/開始できません/);assertGated();element('reload').click();assert.equal(reloads,1);
+ assert.equal(element('recovery').hidden,false);element('sound-settings').click();assert(element('sound-dialog').open);element('sound-test').click();assert.equal(auditAudio.auditions,1);assert.match(element('recovery-copy').textContent,/開始できません/);assertGated();element('reload').click();assert.equal(reloads,1);
  console.log('PASS: WebGL startup failure retains recovery controls.');process.exit(0);
 }
 if(mode==='limit') {
@@ -119,6 +119,9 @@ const style=readFileSync(resolve(root,'src/style.css'),'utf8');
 assert.match(style,/-webkit-user-select\s*:\s*none/);assert.match(style,/-webkit-touch-callout\s*:\s*none/);assert.match(style,/touch-action\s*:\s*none/);
 canvas.dispatch('contextmenu');assert.equal(prevented,1);
 const initial=snapshot().session;
+// Touch activation belongs to release, not pointerdown, according to the platform activation model.
+const unlocksBeforeTouch=auditAudio.unlocks;canvas.dispatch('pointerdown',{pointerType:'touch'});assert.equal(auditAudio.unlocks,unlocksBeforeTouch,'touch-down must not leave an ineligible resume pending');canvas.dispatch('pointerup',{pointerType:'touch'});assert.equal(auditAudio.unlocks,unlocksBeforeTouch+1,'touch-up must synchronously unlock audio');assert.equal(auditAudio.lastUnlockForce,true);
+for(const pointerType of ['touch','pen']){const before=auditAudio.unlocks;canvas.dispatch('pointerdown',{pointerType});canvas.dispatch('pointercancel',{pointerType});assert.equal(auditAudio.unlocks,before,'canceled nonmouse gesture does not unlock');canvas.dispatch('pointerdown',{pointerType});canvas.dispatch('pointerup',{pointerType});assert.equal(auditAudio.unlocks,before+1,'nonmouse release unlocks');}
 // Motion appears before release; competing controls and partial state saves are gated.
 grab(3);assert.equal(auditView.preview,null);assert.equal(auditAudio.movements.length,0);canvas.dispatch('pointermove',{clientX:140});assert.equal(auditView.preview.angle,.4);assert.equal(auditAudio.movements.at(-1),.4);assert.equal(auditAudio.alignments,0);assert.deepEqual(snapshot().session,initial);assertGated();
 assert(element('help').disabled);const blockedToggle=prevented;element('helper-toggle').dispatch('click');assert.equal(prevented,blockedToggle+1,'helper expansion must be blocked during a held layer');for(const id of ['cw','reset','undo','home','help'])element(id).click();assert.equal(auditView.pending.length,0);frame(6000);assert.equal(writes.at(-1).history.length,0);

@@ -45,3 +45,19 @@ it('caps repeated stationary pointer updates while keeping explicit stop immedia
  for(let n=1;n<=250;n++){ctx.currentTime=1+n*.004;sound.motion(.5,n*4);}
  expect(gains[1].gain.calls.length).toBeLessThanOrEqual(190);const before=gains[1].gain.calls.length;sound.stopMotion();expect(gains[1].gain.calls.length).toBe(before+1);expect(gains[1].gain.calls.at(-1)![0]).toBe(0);
 });
+it('retries a policy-blocked pending resume on a later trusted gesture',async()=>{
+ const {ctx,sources}=context();let attempts=0;ctx.resume=vi.fn(()=>{attempts++;if(attempts===1)return new Promise<void>(()=>{});ctx.state='running';return Promise.resolve();});
+ const sound=new MotionAudio(null,()=>ctx as unknown as AudioContext);sound.unlock();sound.unlock(true);await flush();expect(ctx.resume).toHaveBeenCalledTimes(2);sound.settle();expect(sources).toHaveLength(2);
+});
+it('keeps a successful gesture retry ready when an older same-context attempt rejects',async()=>{
+ const {ctx,sources}=context();let reject!:(reason:Error)=>void;let count=0;ctx.resume=vi.fn(()=>{if(++count===1)return new Promise<void>((_resolve,no)=>{reject=no;});ctx.state='running';return Promise.resolve();});const sound=new MotionAudio(null,()=>ctx as unknown as AudioContext);sound.unlock();sound.unlock(true);await flush();reject(Error('old policy rejection'));await flush();sound.settle();expect(sources).toHaveLength(2);
+});
+it('offers an explicit bounded audition and reports engine state without claiming audibility',async()=>{
+ const {ctx,gains}=context();const sound=new MotionAudio(null,()=>ctx as unknown as AudioContext);expect(sound.status).toBe('idle');const played=await sound.audition();expect(played).toBe(true);expect(sound.status).toBe('running');expect(gains[1].gain.calls.some(c=>c[0]>0&&c[0]<=.8)).toBe(true);expect(gains[1].gain.calls.some(c=>c[0]===0&&c[1]>ctx.currentTime+.5)).toBe(true);sound.setMuted(true);expect(sound.status).toBe('muted');expect(await sound.audition()).toBe(false);
+});
+it('shows pending activation and preserves a saved100percent setting through retry/audition',async()=>{
+ const {ctx}=context();ctx.resume=vi.fn(()=>new Promise<void>(()=>{}));const sound=new MotionAudio({getItem:()=>JSON.stringify({version:1,volume:1,muted:false})},()=>ctx as unknown as AudioContext);sound.unlock();expect(sound.status).toBe('waiting');expect(sound.preferences.volume).toBe(1);sound.close();expect(sound.preferences.volume).toBe(1);
+});
+it('cancels a pending audition when the sound dialog is closed before resume completes',async()=>{
+ const {ctx,gains}=context();let finish!:()=>void;ctx.resume=vi.fn(()=>new Promise<void>(resolve=>{finish=()=>{ctx.state='running';resolve();};}));const sound=new MotionAudio(null,()=>ctx as unknown as AudioContext);const audition=sound.audition();sound.stopMotion();finish();expect(await audition).toBe(false);expect(gains[1].gain.calls.every(c=>c[0]===0)).toBe(true);
+});
