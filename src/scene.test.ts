@@ -1,13 +1,14 @@
 import { it, expect } from 'vitest';
 import * as THREE from 'three';
 import { CubeScene } from './scene';
+import {CUBIE_STEP,STICKER_OFFSET} from './geometry';
 import { applyMove, createSolved, makeScramble, type Move } from './model';
 it('keeps 54 exact sticker transforms after animated turn commits without pose drift',()=>{
  const scene=new CubeScene();let state=createSolved();scene.sync(state);
  for(const move of makeScramble(80,()=>.32)){
   scene.beginTurn(move);scene.setTurnAngle(move.direction*Math.PI/2);state=applyMove(state,move);scene.sync(state);
   const snapshot=scene.snapshot();expect(snapshot).toHaveLength(54);
-  for(const s of state){const pose=snapshot.find(p=>p.id===s.id)!;expect(pose.parent).toBe('root');for(let i=0;i<3;i++){expect(pose.position[i]).toBeCloseTo(s.position[i]*1.055+s.normal[i]*.516,10);expect(pose.normal[i]).toBeCloseTo(s.normal[i],10);}}
+  for(const s of state){const pose=snapshot.find(p=>p.id===s.id)!;expect(pose.parent).toBe('root');for(let i=0;i<3;i++){expect(pose.position[i]).toBeCloseTo(s.position[i]*CUBIE_STEP+s.normal[i]*STICKER_OFFSET,10);expect(pose.normal[i]).toBeCloseTo(s.normal[i],10);}}
  }
  scene.dispose();
 });

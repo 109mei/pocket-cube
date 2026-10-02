@@ -14,6 +14,7 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import {CubeView} from './src/view';
 import {CubeScene} from './src/scene';
+import {CUBIE_STEP,STICKER_OFFSET} from './src/geometry';
 import {createSolved,applyMove} from './src/model';
 import {settleDuration} from './src/drag';
 
@@ -40,7 +41,7 @@ function exact(state){const current=poses();
 for(const sticker of state){const p=current[sticker.id];
 for(let i=0;
 i<3;
-i++){assert(Math.abs(p.p[i]-(sticker.position[i]*1.055+sticker.normal[i]*.516))<1e-10);
+i++){assert(Math.abs(p.p[i]-(sticker.position[i]*CUBIE_STEP+sticker.normal[i]*STICKER_OFFSET))<1e-10);
 assert(Math.abs(p.n[i]-sticker.normal[i])<1e-10)}}}
 let cycles=0;
 for(const axis of ['x','y','z'])for(const layer of [-1,0,1])for(const direction of [-1,1])for(const fraction of [.05,.55,1]){

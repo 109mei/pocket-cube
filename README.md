@@ -5,7 +5,7 @@ An original, portrait-first 3×3 color cube, built with actual Three.js and Type
 ## Play
 
 - Grab and drag a colored face. Its layer follows your finger immediately; release to settle to the nearest quarter-turn. Small drags return to the previous state.
-- Drag empty space to orbit the cube. The small cube icon resets the viewpoint.
+- Drag empty space to orbit freely through 360°, including over the top and underside. The small cube icon resets the viewpoint.
 - Scramble starts a fresh puzzle; the timer begins with the first turn and pauses while the tab is hidden.
 - Undo reverses one committed player move. Reset returns all faces to solved.
 - Expand **ボタンで回す** for six reference faces and clockwise/counterclockwise controls. Directions are viewed from outside the selected face.
@@ -33,8 +33,9 @@ Dev server: http://127.0.0.1:5174. Production output: `dist/`. Assets use relati
 - `input.ts`: pointer/tap helpers.
 - `drag.ts`: early layer selection, locked-axis finger tracking and transactional release.
 - `projection.ts`: camera-aware rotational velocity at the actual grabbed world point.
-- `scene.ts`: testable procedural cubies, face tiles, raycasting and layer pivots.
-- `view.ts`: WebGL lifecycle, camera orbit and animated layer turns. Every completed turn snaps back to exact logical state.
+- `geometry.ts`: shared compact body/tile dimensions.
+- `scene.ts`: testable procedural cubies, face tiles, raycasting, layer pivots and conservative visual bounds.
+- `view.ts`: WebGL lifecycle, continuous quaternion orbit, geometry-derived camera fit and animated layer turns. Every completed turn snaps back to exact logical state.
 - `main.ts`: accessible DOM controls, dialogs, pointer ownership and lifecycle.
 
 ## Deployment

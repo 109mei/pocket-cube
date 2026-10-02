@@ -4,7 +4,7 @@
 
 Environment: Node.js 24.19.0, Linux. Date: 2026-10-02.
 
-- `npm test`: 73 passing unit/scene/projection tests across8 files, plus5 controller integration scenarios and108 actual scene/view animation cases.
+- `npm test`: 78 passing unit/scene/projection/camera tests across9 files, plus5 controller integration scenarios and108 actual scene/view animation cases.
 - `npm run build`: TypeScript type checking and Vite production build pass.
 - Exact move-four-times and inverse checks for all 18 signed axis/layer turns.
 - 100 seeded 100-move scrambles, replayed backward, restore the exact state.
@@ -47,3 +47,15 @@ The committed portable controller suite runs through `npm test` and CI. It check
 `tests/view-animation.mjs` additionally checks actual CubeView animation methods across54 signed layer/held-angle combinations and54 canceled settles. It verifies exact world transforms, no zero-pose jump on release, zero animation frames for an already-reached target, and reduced-motion behavior using a controlled frame clock without a WebGL context.
 
 Independent revision review found and closed three transaction/input edges: rejected moves now clear held previews at the history limit; already-reached snap targets incur no extra animation delay; context loss immediately clears pointer capture and prevents stale input from restoring a preview. Helper expansion is gated during manipulation, and playfield resizing cancels a held drag before the camera projection changes. Final independent review reports no unresolved material code/transaction finding; real device interaction remains the acceptance limitation above.
+
+## Device-feedback framing and spacing correction
+
+A real-device screenshot supplied by the tester revealed cube clipping despite the app shell fitting its DOM viewport. The earlier layout checks were insufficient: a fitted canvas does not guarantee its projected 3D content fits. A new regression measured the old geometry bounds as far as1.2986 normalized screen coordinates, outside the visible limit of1.0.
+
+Camera fit now uses a conservative sphere derived from actual mesh bounding-box corners. Because layer pivots rotate around the origin, their radial bounds remain valid at all partial angles. The camera uses the tighter vertical/horizontal field of view with pixel padding and perspective depth. Tests project4,147,200 mesh-bound corners over six viewport shapes,24 orbit poses,all nine layers and five partial angles, checking both frame edges and near/far depth. Near/far planes enclose the same swept sphere closely; an additional16-bit depth-precision regression keeps thin sticker/body surfaces separated in narrow viewports.
+
+The orbit camera now composes normalized screen-relative quaternions, with a full vertical-circle regression crossing both former pole limits, continuity checks at each step, and5,000 mixed movements followed by exact home reset. Body seams were reduced from approximately0.057 to0.018 scene units; larger tiles reduce dark borders while their front surfaces remain slightly above the bodies. Existing exact logical-state and animation checks use the new shared render dimensions.
+
+The mobile layout uses a compact title/status row and one-row primary controls, retaining44px touch targets. It uses visualViewport height when unzoomed and dynamic viewport CSS as fallback. Tests cover viewport-resize cancellation without committing a held layer and preserving layout size during browser zoom.
+
+These geometry/controller checks pass without claiming a WebGL-rendered browser or physical-device retest. Post-deployment responsive layout and the user's Safari interaction/appearance check remain separate acceptance steps. Private tester screenshots are not included in the repository.

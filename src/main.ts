@@ -9,19 +9,21 @@ import { CubeView } from './view';
 const icons={shuffle:'<path d="m3 4 3 0 10 12h3m-4-3 4 3-4 3M3 16h3l3-4m3-4 4-4h3m-4-3 4 3-4 3"/>',undo:'<path d="M7 5 3 9l4 4M3 9h9a5 5 0 0 1 0 10h-2"/>',reset:'<path d="M4 7a8 8 0 1 1-1 8M4 2v5h5"/>',view:'<path d="m11 2 8 5v9l-8 5-8-5V7zM3 7l8 5 8-5m-8 5v9"/>'};
 const svg=(name:keyof typeof icons)=>`<svg viewBox="0 0 22 22" aria-hidden="true">${icons[name]}</svg>`;
 document.querySelector<HTMLDivElement>('#app')!.innerHTML=`<main class="app">
- <header class="topbar"><div class="brand"><span class="brandmark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>POCKET PLAY</div><button id="help" class="icon-button" aria-label="遊び方">?</button></header>
- <div class="title-block"><p class="eyebrow">A LITTLE MOMENT OF FOCUS</p><h1>ポケットキューブ</h1><p class="subtitle">ひとひねり、気分を変えて。</p></div>
- <section class="stats" aria-label="プレイ記録"><div class="stat"><div id="moves" class="stat-value">0</div><div class="stat-label">MOVES / 手数</div></div><div class="stat-divider"></div><div class="stat"><div id="timer" class="stat-value">00:00</div><div class="stat-label">TIME / 時間</div></div></section>
+ <header class="topbar"><div class="brand"><span class="brandmark" aria-hidden="true"><i></i><i></i><i></i><i></i></span><h1>ポケットキューブ</h1></div><button id="help" class="icon-button" aria-label="遊び方">?</button></header>
+ <section class="stats" aria-label="プレイ記録"><div class="stat"><div id="moves" class="stat-value">0</div><div class="stat-label">手数</div></div><div class="stat-divider"></div><div class="stat"><div id="timer" class="stat-value">00:00</div><div class="stat-label">時間</div></div></section>
  <section class="playfield" aria-label="3Dキューブ"><canvas id="cube" draggable="false" aria-label="面をスワイプして回転。余白をドラッグして視点を変更。補助ボタンでも回転できます。"></canvas><div id="recovery" class="recovery" role="alert" hidden><p id="recovery-copy"></p><button id="reload">再読み込み</button></div><button id="home" class="icon-button view-reset" aria-label="視点を元に戻す">${svg('view')}</button></section>
- <p id="hint" class="hint"><strong>面をつかんで、そのまま回そう。</strong><br>余白をドラッグすると、裏側も見られます。</p>
+ <p id="hint" class="hint">面で回す · 余白で360°見渡す</p>
  <section class="actions" aria-label="ゲーム操作"><button id="scramble" class="primary">${svg('shuffle')}スクランブル</button><div class="secondary-row"><button id="undo" class="secondary">${svg('undo')}1手戻す</button><button id="reset" class="secondary">${svg('reset')}リセット</button></div></section>
  <details class="helper"><summary id="helper-toggle">ボタンで回す</summary><div class="helper-panel"><div class="faces" aria-label="回す面">${['右','左','上','下','前','奥'].map((label,i)=>`<button class="face ${i===4?'active':''}" data-face="${i}" aria-pressed="${i===4}"><span>${['R','L','U','D','F','B'][i]}</span>${label}</button>`).join('')}</div><div class="turns"><button id="ccw">↶ 反時計回り</button><button id="cw">↷ 時計回り</button></div><p class="helper-note">基準の面を選択 · その面を正面から見た回転方向</p></div></details>
  <footer class="footer"><i></i> YOUR PROGRESS IS SAVED</footer>
  </main><div id="toast" class="toast" role="status"></div>
- <dialog id="help-dialog"><h2>指先で、ひとひねり。</h2><ul><li>スクランブルで、色をシャッフル。</li><li>色の面を上下・左右にスワイプすると、その列や行が回ります。</li><li>キューブのない余白をドラッグすると、視点が回ります。</li><li>操作に迷ったら「ボタンで回す」。</li></ul><p>6つの面を、それぞれ同じ色にそろえよう。時間は最初の1手から。画面を離れると一時停止します。</p><button class="primary" data-close>やってみる</button></dialog>
+ <dialog id="help-dialog"><h2>指先で、ひとひねり。</h2><ul><li>スクランブルで、色をシャッフル。</li><li>色の面を上下・左右にスワイプすると、その列や行が回ります。</li><li>キューブのない余白をドラッグすると、上下も裏側も360°見渡せます。</li><li>操作に迷ったら「ボタンで回す」。</li></ul><p>6つの面を、それぞれ同じ色にそろえよう。時間は最初の1手から。画面を離れると一時停止します。</p><button class="primary" data-close>やってみる</button></dialog>
  <dialog id="confirm-dialog"><h2 id="confirm-title"></h2><p id="confirm-copy"></p><div class="dialog-actions"><button id="confirm-no">キャンセル</button><button id="confirm-yes">続ける</button></div></dialog>
  <dialog id="solved-dialog"><div class="celebration-icon">✦</div><h2>きれいに、そろった！</h2><p id="solved-copy"></p><button class="primary" data-close>いい気分。</button></dialog>`;
 const $=<T extends HTMLElement=HTMLElement>(id:string)=>document.getElementById(id) as T;
+// Safari's visible area can shrink independently of CSS layout viewport chrome.
+function refreshViewport(){const viewport=window.visualViewport;if(viewport&&viewport.scale===1&&Number.isFinite(viewport.height)&&viewport.height>0)$('app').style.setProperty('--app-height',`${viewport.height}px`);}
+refreshViewport();
 let session=newSession();let storage:Storage|null=null;try{storage=localStorage;session=loadSession(storage);}catch{/* Private/storage-restricted browsers remain playable. */}
 let storageWarning=false;let toastTimeout=0;
 function toast(message:string){$('toast').textContent=message;$('toast').classList.add('show');clearTimeout(toastTimeout);toastTimeout=window.setTimeout(()=>$('toast').classList.remove('show'),2800);}
@@ -107,7 +109,8 @@ canvas.addEventListener('pointermove',event=>{
 canvas.addEventListener('pointerup',event=>{if(gesture?.id===event.pointerId)finishGesture(false,event.clientX,event.clientY);});
 canvas.addEventListener('pointercancel',event=>{if(gesture?.id===event.pointerId)finishGesture(true);});
 canvas.addEventListener('lostpointercapture',event=>{if(gesture?.id===event.pointerId)finishGesture(true);});
-window.addEventListener('resize',()=>finishGesture(true));
+window.addEventListener('resize',()=>{finishGesture(true);refreshViewport();});
+window.visualViewport?.addEventListener('resize',()=>{finishGesture(true);refreshViewport();});
 window.addEventListener('blur',()=>finishGesture(true));
 let last=performance.now(),lastSaved=last;
 function clock(now:number){const delta=now-last;last=now;if(!document.hidden&&!disabled)session=tickSession(session,delta);$('timer').textContent=formatTime(session.elapsedMs);if(now-lastSaved>5000){persist();lastSaved=now;}requestAnimationFrame(clock);}

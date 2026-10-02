@@ -2,17 +2,16 @@ import * as THREE from 'three';
 import { CubeScene } from './scene';
 import { projectedDragTangents } from './projection';
 import { interpolateAngle, settleDuration } from './drag';
-import { AXIS_INDEX, type Axis, type CubeState, type Move, type Vec3i } from './model';
-import type { Hit, ProjectedTangent } from './input';
-const STEP=1.055;
-const vector=(v:Vec3i)=>new THREE.Vector3(...v);
+import { type CubeState, type Move, type Vec3i } from './model';
+import type { Hit } from './input';
 export class CubeView {
  readonly renderer:THREE.WebGLRenderer;
  readonly scene=new THREE.Scene();
  readonly camera=new THREE.PerspectiveCamera(34,1,0.1,100);
  private cube=new CubeScene();
  private raycaster=new THREE.Raycaster();
- private theta=0.62;private phi=1.05;
+ private orientation=new THREE.Quaternion();
+ private distance=9.5;
  private lost=false;
  private abortAnimation:((reason:Error)=>void)|null=null;
  private selected:Vec3i|null=null;
@@ -32,7 +31,7 @@ export class CubeView {
   this.observer=new ResizeObserver(()=>{onPlayfieldResize();this.resize();});this.observer.observe(canvas);
   canvas.addEventListener('webglcontextlost',event=>{event.preventDefault();this.lost=true;this.abortAnimation?.(new Error('WebGL context lost'));this.onContextLost();});
   canvas.addEventListener('webglcontextrestored',()=>{this.lost=false;this.sync(this.state);this.resize();});
-  this.resize();this.loop();
+  this.home();this.resize();this.loop();
  }
  sync(state:CubeState){this.preview=null;this.state=state;this.cube.sync(state);this.cube.highlight(this.selected);}
  previewMove(move:Move,angle:number){
@@ -60,10 +59,33 @@ export class CubeView {
  tangents(hit:Hit){const rect=this.canvas.getBoundingClientRect();return projectedDragTangents(hit,this.camera,{width:rect.width,height:rect.height});}
 
  highlight(normal:Vec3i|null){this.selected=normal;this.cube.highlight(normal);}
- orbit(dx:number,dy:number){this.theta-=dx*.009;this.phi=Math.max(.25,Math.min(Math.PI-.25,this.phi-dy*.009));this.updateCamera();}
- home(){this.theta=.62;this.phi=1.05;this.updateCamera();}
- private updateCamera(){const distance=8.5;this.camera.position.setFromSphericalCoords(distance,this.phi,this.theta);this.camera.lookAt(0,0,0);this.camera.updateMatrixWorld();}
- resize(){const rect=this.canvas.getBoundingClientRect();if(!rect.width||!rect.height)return;this.renderer.setSize(rect.width,rect.height,false);this.camera.aspect=rect.width/rect.height;this.camera.fov=this.camera.aspect<.8?2*Math.atan(Math.tan(34*Math.PI/360)/this.camera.aspect*.8)*180/Math.PI:34;this.camera.updateProjectionMatrix();this.updateCamera();}
+ /** Screen-relative quaternion orbit has no polar singularity or artificial clamp. */
+ orbit(dx:number,dy:number){
+  const length=Math.hypot(dx,dy);if(!Number.isFinite(length)||length===0)return;
+  const axis=new THREE.Vector3(-dy,-dx,0).divideScalar(length);
+  this.orientation.multiply(new THREE.Quaternion().setFromAxisAngle(axis,length*.009)).normalize();this.updateCamera();
+ }
+ home(){
+  this.camera.up.set(0,1,0);this.camera.position.setFromSphericalCoords(1,1.05,.62);this.camera.lookAt(0,0,0);
+  this.orientation=this.camera.quaternion.clone();this.updateCamera();
+ }
+ private updateCamera(){
+  this.camera.quaternion.copy(this.orientation);
+  this.camera.position.set(0,0,this.distance??9.5).applyQuaternion(this.orientation);
+  this.camera.up.set(0,1,0).applyQuaternion(this.orientation);this.camera.updateMatrixWorld();
+ }
+ resize(){
+  const rect=this.canvas.getBoundingClientRect();if(!rect.width||!rect.height)return;
+  this.renderer.setSize(rect.width,rect.height,false);this.camera.aspect=rect.width/rect.height;this.camera.fov=34;
+  const padding=Math.min(14,rect.width*.04,rect.height*.04),tanHalf=Math.tan(this.camera.fov*Math.PI/360);
+  const vertical=Math.atan(tanHalf*(1-2*padding/rect.height));
+  const horizontal=Math.atan(tanHalf*this.camera.aspect*(1-2*padding/rect.width));
+  // Fit the entire swept sphere, including perspective depth, not just a flat face.
+  const radius=this.cube.boundingRadius();
+  this.distance=radius/Math.sin(Math.min(vertical,horizontal));
+  this.camera.near=Math.max(.1,this.distance-radius*1.1);this.camera.far=this.distance+radius*1.1;
+  this.camera.updateProjectionMatrix();this.updateCamera();
+ }
  private loop=()=>{this.frame=requestAnimationFrame(this.loop);if(!this.lost)this.renderer.render(this.scene,this.camera);};
  /** A read-only consistency probe for deterministic view/model verification. */
  snapshot(){return this.cube.snapshot();}

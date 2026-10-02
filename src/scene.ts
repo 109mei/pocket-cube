@@ -2,15 +2,15 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { AXIS_INDEX, FACE_COLORS, type CubeState, type Move, type Vec3i } from './model';
 import type { Hit } from './input';
-const STEP=1.055;
+import { CUBIE_STEP as STEP, BODY_SIZE, BODY_RADIUS, STICKER_SIZE, STICKER_DEPTH, STICKER_OFFSET, STICKER_RADIUS } from './geometry';
 const vector=(v:Vec3i)=>new THREE.Vector3(...v);
 /** Pure Three.js scene graph: testable without WebGL, canvas, clocks or browser state. */
 export class CubeScene extends THREE.Group{
  readonly root=new THREE.Group();readonly pivot=new THREE.Group();
  private bodies:THREE.Mesh[]=[];
  private stickers:THREE.Mesh<THREE.BoxGeometry,THREE.MeshStandardMaterial>[]=[];
- private bodyGeometry=new RoundedBoxGeometry(.998,.998,.998,3,.075);
- private stickerGeometry=new RoundedBoxGeometry(.865,.865,.035,3,.065);
+ private bodyGeometry=new RoundedBoxGeometry(BODY_SIZE,BODY_SIZE,BODY_SIZE,3,BODY_RADIUS);
+ private stickerGeometry=new RoundedBoxGeometry(STICKER_SIZE,STICKER_SIZE,STICKER_DEPTH,3,STICKER_RADIUS);
  private bodyMaterial=new THREE.MeshStandardMaterial({color:0x253633,roughness:.62,metalness:.04});
  private currentMove:Move|null=null;
  constructor(){
@@ -23,7 +23,7 @@ export class CubeScene extends THREE.Group{
  sync(state:CubeState){
   for(const mesh of this.bodies){this.root.add(mesh);mesh.rotation.set(0,0,0);mesh.position.copy(vector(mesh.userData.position).multiplyScalar(STEP));}
   if(!this.stickers.length){for(const sticker of state){const mesh=new THREE.Mesh(this.stickerGeometry,new THREE.MeshStandardMaterial({color:FACE_COLORS[sticker.color],roughness:.36,metalness:.02}));this.stickers.push(mesh);}}
-  for(const sticker of state){const mesh=this.stickers[sticker.id];this.root.add(mesh);mesh.userData.sticker=sticker;mesh.position.copy(vector(sticker.position).multiplyScalar(STEP).addScaledVector(vector(sticker.normal),.516));mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1),vector(sticker.normal));}
+  for(const sticker of state){const mesh=this.stickers[sticker.id];this.root.add(mesh);mesh.userData.sticker=sticker;mesh.position.copy(vector(sticker.position).multiplyScalar(STEP).addScaledVector(vector(sticker.normal),STICKER_OFFSET));mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1),vector(sticker.normal));}
   this.pivot.rotation.set(0,0,0);this.currentMove=null;this.highlight(null);this.updateMatrixWorld(true);
  }
  beginTurn(move:Move){
@@ -42,6 +42,18 @@ export class CubeScene extends THREE.Group{
   return{position:[...hit.object.userData.position] as Vec3i,normal,point:hit.point.toArray() as Vec3i};
  }
  highlight(normal:Vec3i|null){for(const mesh of this.stickers){const s=mesh.userData.sticker;if(!s)continue;const active=normal&&s.normal.every((n:number,i:number)=>n===normal[i]);mesh.material.emissive.set(active?'#f7e9c9':'#000000');mesh.material.emissiveIntensity=active?.16:0;}}
+ /** A layer pivot rotates around the origin, so every vertex radius is invariant.
+  * Actual geometry bounding-box corners conservatively enclose all intermediate poses. */
+ boundingRadius(){
+  this.updateMatrixWorld(true);let radius=0;const point=new THREE.Vector3();
+  for(const mesh of [...this.bodies,...this.stickers]){
+   if(!mesh.geometry.boundingBox)mesh.geometry.computeBoundingBox();const box=mesh.geometry.boundingBox!;
+   for(const x of [box.min.x,box.max.x])for(const y of [box.min.y,box.max.y])for(const z of [box.min.z,box.max.z]){
+    point.set(x,y,z).applyMatrix4(mesh.matrixWorld);radius=Math.max(radius,point.length());
+   }
+  }
+  return radius;
+ }
  snapshot(){return this.stickers.map(m=>({id:m.userData.sticker.id,position:m.position.toArray(),normal:new THREE.Vector3(0,0,1).applyQuaternion(m.quaternion).toArray(),parent:m.parent===this.root?'root':'pivot'}));}
  dispose(){this.bodyGeometry.dispose();this.stickerGeometry.dispose();this.bodyMaterial.dispose();for(const m of this.stickers)m.material.dispose();}
 }

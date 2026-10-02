@@ -42,11 +42,11 @@ const compiled = await build({
 });
 let now = 0, frames = [], reloads = 0, prevented = 0;
 const elements = new Map(), faceButtons = [], closeButtons = [];
-const windowEvents = {}, documentEvents = {}, writes = [], storage = new Map();
+const windowEvents = {}, documentEvents = {}, viewportEvents = {}, writes = [], storage = new Map();
 class Element {
  constructor(id) {
   this.id=id;this.disabled=false;this.open=false;this.events={};this.dataset={};
-  this.textContent='';this.captured=new Set();
+  this.textContent='';this.captured=new Set();this.style={values:{},setProperty(name,value){this.values[name]=value;},getPropertyValue(name){return this.values[name]??'';}};
   this.classList={add(){},remove(){},toggle(){}};
  }
  set innerHTML(html) {
@@ -69,8 +69,9 @@ class Element {
 const app = new Element('app'), footer = new Element('footer');
 globalThis.auditMode=mode;
 globalThis.window=globalThis;
-globalThis.document={hidden:false,getElementById:id=>elements.get(id),querySelector:selector=>selector==='#app'?app:selector==='.footer'?footer:null,querySelectorAll:selector=>selector==='[data-close]'?closeButtons:selector==='[data-face]'?faceButtons:[],addEventListener:(type,handler)=>(documentEvents[type]??=[]).push(handler)};
+globalThis.document={hidden:false,getElementById:id=>id==='app'?app:elements.get(id),querySelector:selector=>selector==='#app'?app:selector==='.footer'?footer:null,querySelectorAll:selector=>selector==='[data-close]'?closeButtons:selector==='[data-face]'?faceButtons:[],addEventListener:(type,handler)=>(documentEvents[type]??=[]).push(handler)};
 globalThis.addEventListener=(type,handler)=>(windowEvents[type]??=[]).push(handler);
+globalThis.visualViewport={height:568,scale:1,addEventListener:(type,handler)=>(viewportEvents[type]??=[]).push(handler)};
 globalThis.requestAnimationFrame=handler=>{frames.push(handler);return frames.length;};
 globalThis.setTimeout=()=>0;globalThis.clearTimeout=()=>{};
 globalThis.location={reload(){reloads++;}};
@@ -108,6 +109,8 @@ if(mode==='storage-denied') {
  console.log('PASS: denied storage preserves committed state and requires loss confirmation before reload.');process.exit(0);
 }
 assert(!elements.has('gesture'),'no intrusive gesture-text overlay');
+assert.equal(app.style.getPropertyValue('--app-height'),'568px','use the actual visible viewport height');
+visualViewport.scale=2;visualViewport.height=284;for(const callback of viewportEvents.resize??[])callback();assert.equal(app.style.getPropertyValue('--app-height'),'568px','pinch zoom must not reflow the game smaller');visualViewport.scale=1;visualViewport.height=568;
 const style=readFileSync(resolve(root,'src/style.css'),'utf8');
 assert.match(style,/-webkit-user-select\s*:\s*none/);assert.match(style,/-webkit-touch-callout\s*:\s*none/);assert.match(style,/touch-action\s*:\s*none/);
 canvas.dispatch('contextmenu');assert.equal(prevented,1);
@@ -121,9 +124,9 @@ grab(6);canvas.dispatch('pointermove',{clientX:5,clientY:240});assert.equal(audi
 // Small drag returns without a logical move.
 let committed=snapshot().session;grab(40);release(40);assert.equal(auditView.pending[0].options.toAngle,0);await settle();assert.deepEqual(snapshot().session,committed);
 // Cancellation paths retain exact state, ignore stale release, and do not unlock another pointer.
-for(const cancel of ['pointercancel','lostpointercapture','resize','blur','visibilitychange','playfieldresize']) {
+for(const cancel of ['pointercancel','lostpointercapture','resize','blur','visibilitychange','playfieldresize','visualviewport']) {
  committed=snapshot().session;grab(120);canvas.dispatch('pointercancel',{pointerId:2});assert.equal(auditView.pending.length,0);
- if(cancel==='playfieldresize')auditView.onResize();else if(cancel==='resize'||cancel==='blur')windowEvent(cancel);else if(cancel==='visibilitychange')visibility(true);else canvas.dispatch(cancel);
+ if(cancel==='visualviewport'){visualViewport.height=460;for(const callback of viewportEvents.resize??[])callback();assert.equal(app.style.getPropertyValue('--app-height'),'460px');}else if(cancel==='playfieldresize')auditView.onResize();else if(cancel==='resize'||cancel==='blur')windowEvent(cancel);else if(cancel==='visibilitychange')visibility(true);else canvas.dispatch(cancel);
  assert.equal(auditView.pending[0].options.toAngle,0,cancel);await settle();release(120);assert.equal(auditView.pending.length,0);assert.deepEqual(snapshot().session,committed);if(cancel==='visibilitychange')visibility(false);
 }
 canvas.dispatch('pointerdown');canvas.dispatch('pointerdown',{pointerId:2,isPrimary:false});canvas.dispatch('pointermove',{pointerId:2,clientX:230});canvas.dispatch('pointerup',{pointerId:2,clientX:230});assert.equal(auditView.preview,null);canvas.dispatch('pointercancel');
