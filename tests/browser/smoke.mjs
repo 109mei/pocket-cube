@@ -1,0 +1,10 @@
+import { chromium } from '@playwright/test';
+const browser=await chromium.launch({executablePath:'/usr/bin/chromium',headless:true,chromiumSandbox:true});
+const context=await browser.newContext({viewport:{width:390,height:844},deviceScaleFactor:1,isMobile:true,hasTouch:true});
+const page=await context.newPage();
+const errors=[];page.on('pageerror',e=>errors.push(e.message));
+await page.goto('http://127.0.0.1:5174');
+await page.locator('#scramble').waitFor();
+await page.screenshot({path:'docs/screenshots/cube-390x844-initial.png'});
+console.log(JSON.stringify({errors,title:await page.title(),canvas:await page.locator('canvas').boundingBox()}));
+await browser.close();
